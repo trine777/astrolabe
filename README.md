@@ -1,16 +1,25 @@
 <p align="center">
   <h1 align="center">Astrolabe</h1>
   <p align="center">
-    <strong>Metadata reliability layer for AI-native data infrastructure</strong>
+    <strong>Metadata reliability layer for AI-native data infrastructure</strong><br>
+    <strong>面向 AI 原生数据基建的元数据可靠层</strong>
   </p>
   <p align="center">
-    <em>The past is trustworthy. The present is clear.</em>
+    <em>The past is trustworthy. The present is clear.</em><br>
+    <em>过去可信，当下清晰。</em>
+  </p>
+  <p align="center">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+    <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"></a>
+    <a href="https://www.swift.org/"><img src="https://img.shields.io/badge/swift-5.9+-orange.svg" alt="Swift 5.9+"></a>
+    <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-compatible-green.svg" alt="MCP Compatible"></a>
   </p>
   <p align="center">
     <a href="#quick-start">Quick Start</a> &middot;
     <a href="#architecture">Architecture</a> &middot;
     <a href="#mcp-integration">MCP Integration</a> &middot;
-    <a href="docs/">Documentation</a>
+    <a href="docs/">Docs</a> &middot;
+    <a href="#中文说明">中文</a>
   </p>
 </p>
 
@@ -53,7 +62,6 @@ Data Infrastructure (lakes, warehouses, pipelines)
 ### Python (metadata engine + MCP server)
 
 ```bash
-# Install
 pip install -e ".[all]"
 
 # Run MCP server
@@ -66,13 +74,8 @@ xingtu --help
 ### Swift (macOS native app)
 
 ```bash
-# Build
 swift build
-
-# Run CLI
 swift run XingTuCLI
-
-# Run GUI app
 swift run XingTuApp
 ```
 
@@ -96,7 +99,7 @@ Metadata source of truth          Retrieval & AI infrastructure
 - Atomic audit (transactions)     - Embedding management
 - Review queue (persistent)       - Multi-modal ingest
 - AI decision log (persistent)    - MCP server
-- macOS GUI (SwiftUI)             - Universe model (intent → delta)
+- macOS GUI (SwiftUI)             - Universe model (intent -> delta)
 ```
 
 ### Core Components
@@ -131,11 +134,11 @@ trust_score = f(provenance, freshness, confidence, human_confirmed)
 AI Agent infers metadata
         |
         v
-   confidence >= 0.85 ?  ──yes──>  Auto-apply + log
+   confidence >= 0.85 ?  --yes-->  Auto-apply + log
         |
        no
         |
-   confidence >= 0.50 ?  ──yes──>  Apply + queue for review
+   confidence >= 0.50 ?  --yes-->  Apply + queue for review
         |
        no
         v
@@ -241,8 +244,98 @@ Environment variables (see [`.env.example`](.env.example)):
 
 ## License
 
-MIT
+This project is licensed under the **MIT License** &mdash; see the [LICENSE](LICENSE) file for details.
+
+You are free to use, modify, and distribute this software for any purpose, including commercial use, provided the original copyright notice and license are included.
 
 ## Contributing
 
-Contributions welcome. Please open an issue first to discuss what you would like to change.
+Contributions are welcome. Please open an issue first to discuss what you would like to change.
+
+---
+
+<a id="中文说明"></a>
+
+## 中文说明
+
+### 什么是 Astrolabe（星盘）？
+
+Astrolabe 是一个**元数据可靠层**，位于数据基建（数据湖、数据仓库、数据管道）与 AI Agent 之间。它回答一个核心问题：**元数据是否可信？**
+
+```
+数据基建（数据湖 / 数据仓库 / 数据管道）
+        │
+        ▼  schema 变更事件、数据质量信号
+   Astrolabe（元数据可靠层）
+        │
+        ▼  可信元数据 + 信任分
+   AI Agent / 上层决策系统
+```
+
+### 设计理念
+
+> 过去是可信的（数据可靠）&mdash; 星图主力<br>
+> 现在是明确的（意图清晰）&mdash; 星图补充
+
+星图不做路线规划、不做未来预测。它的核心职责是：**确保元数据可追溯、可信赖、可审计**。
+
+### 核心能力
+
+| 能力 | 说明 |
+|------|------|
+| **AI 语义推断** | 自动检测字段语义类型，附带置信度评分 |
+| **渐进信任** | 可配置的自动应用阈值；低置信度决策排队等待人工审核 |
+| **原子审计** | 每次元数据变更与审计日志在同一事务中完成 |
+| **MCP 接口** | AI Agent（Claude 等）通过 [Model Context Protocol](https://modelcontextprotocol.io) 访问元数据 |
+| **双界面** | macOS 原生 GUI 供人类使用，MCP 供 AI 使用 &mdash; 共享同一元数据存储 |
+| **多模态搜索** | 向量搜索、全文检索、混合搜索 |
+| **事件驱动** | 文件拖入自动触发导入、推断、关系发现 |
+| **Docker 部署** | 一键 `docker compose up` |
+
+### 元数据可靠性模型
+
+每条元数据携带可靠性信号：
+
+```
+信任分 = f(溯源, 新鲜度, 置信度, 人工确认)
+```
+
+| 信号 | 来源 | 存储位置 |
+|------|------|----------|
+| **置信度** | AI 推断 (0.0 - 1.0) | `ai_decisions.confidence` |
+| **人工确认** | 审核队列通过 | `meta_properties.user_confirmed_at` |
+| **溯源** | 谁创建/修改，何时 | `meta_events`（原子审计） |
+| **新鲜度** | 最近验证时间戳 | `meta_properties.updated_at` |
+
+### 双技术栈
+
+| 栈 | 角色 | 技术 |
+|----|------|------|
+| **Swift** | 元数据真相源 | SQLite、SwiftUI、原子事务 |
+| **Python** | 检索与 AI 基础设施 | LanceDB、PyArrow、向量搜索 |
+
+### 快速开始
+
+```bash
+# Python
+pip install -e ".[all]"
+python -m xingtu_mcp.server
+
+# Swift
+swift build
+swift run XingTuApp
+
+# Docker
+cp .env.example .env
+docker compose up -d
+```
+
+### 开源协议
+
+本项目采用 **MIT 许可证** 开源 &mdash; 详见 [LICENSE](LICENSE) 文件。
+
+你可以自由地使用、修改和分发本软件（包括商业用途），前提是保留原始版权声明和许可证。
+
+### 参与贡献
+
+欢迎贡献代码。请先开 Issue 讨论你想要做的变更。
