@@ -456,7 +456,7 @@ class XingTuService:
             "access_count": 0,
             "last_accessed": now,
             "expires_at": expires_at,
-            "tags": tags,
+            "tags": tags or [],
             "metadata_json": metadata_json,
             "created_at": now,
         }
@@ -734,16 +734,33 @@ class XingTuService:
         total = len(relations)
         page = relations[:limit]
 
-        edges = []
+        # 检测悬空关系：收集所有涉及的 ID，批量验证存在性
+        endpoint_ids = set()
         for r in page:
+            endpoint_ids.add(r.get("source_id", ""))
+            endpoint_ids.add(r.get("target_id", ""))
+        existing_ids = set()
+        for eid in endpoint_ids:
+            if eid and (self.store.get_collection(eid) or self.store.get_document(eid)):
+                existing_ids.add(eid)
+
+        edges = []
+        dangling_count = 0
+        for r in page:
+            src = r.get("source_id", "")
+            tgt = r.get("target_id", "")
+            is_dangling = (src not in existing_ids) or (tgt not in existing_ids)
+            if is_dangling:
+                dangling_count += 1
             edges.append({
                 "id": r.get("id", ""),
-                "source_id": r.get("source_id", ""),
-                "target_id": r.get("target_id", ""),
+                "source_id": src,
+                "target_id": tgt,
                 "type": r.get("relation_type", ""),
                 "description": (r.get("description") or "")[:80],
                 "confidence": r.get("confidence", 0),
                 "is_ai_inferred": r.get("is_ai_inferred", False),
+                "dangling": is_dangling,
             })
 
         return {
@@ -760,6 +777,7 @@ class XingTuService:
                 "limit": limit,
                 "has_more": total > limit,
             },
+            "dangling_count": dangling_count,
             "relations": edges,
         }
 

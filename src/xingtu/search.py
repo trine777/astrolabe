@@ -18,6 +18,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _esc(value: str) -> str:
+    """Escape single quotes for LanceDB SQL where clauses."""
+    if value is None:
+        return ""
+    return str(value).replace("'", "''")
+
+
 class ChixinheSearch:
     """
     炽心核 - 搜索与决策引擎
@@ -52,7 +59,7 @@ class ChixinheSearch:
 
         conditions = []
         if collection_id:
-            conditions.append(f"collection_id = '{collection_id}'")
+            conditions.append(f"collection_id = '{_esc(collection_id)}'")
         if filter_expr:
             conditions.append(filter_expr)
         if conditions:
@@ -81,7 +88,7 @@ class ChixinheSearch:
 
         conditions = []
         if collection_id:
-            conditions.append(f"collection_id = '{collection_id}'")
+            conditions.append(f"collection_id = '{_esc(collection_id)}'")
         if filter_expr:
             conditions.append(filter_expr)
         if conditions:
@@ -112,7 +119,7 @@ class ChixinheSearch:
 
         conditions = []
         if collection_id:
-            conditions.append(f"collection_id = '{collection_id}'")
+            conditions.append(f"collection_id = '{_esc(collection_id)}'")
         if filter_expr:
             conditions.append(filter_expr)
         if conditions:
@@ -150,9 +157,9 @@ class ChixinheSearch:
 
         conditions = []
         if target_type:
-            conditions.append(f"content_type = '{target_type}'")
+            conditions.append(f"content_type = '{_esc(target_type)}'")
         if collection_id:
-            conditions.append(f"collection_id = '{collection_id}'")
+            conditions.append(f"collection_id = '{_esc(collection_id)}'")
         if conditions:
             search = search.where(" AND ".join(conditions), prefilter=True)
 
@@ -178,9 +185,9 @@ class ChixinheSearch:
         search = table.search(vector, vector_column_name="vector")
 
         # Exclude the source document itself
-        conditions = [f"id != '{document_id}'"]
+        conditions = [f"id != '{_esc(document_id)}'"]
         if collection_id:
-            conditions.append(f"collection_id = '{collection_id}'")
+            conditions.append(f"collection_id = '{_esc(collection_id)}'")
         search = search.where(" AND ".join(conditions), prefilter=True)
 
         results = search.limit(limit).to_list()
@@ -199,9 +206,9 @@ class ChixinheSearch:
 
         search = table.search(query_vector, vector_column_name="vector")
 
-        conditions = [f"agent_id = '{agent_id}'"]
+        conditions = [f"agent_id = '{_esc(agent_id)}'"]
         if memory_type:
-            conditions.append(f"memory_type = '{memory_type}'")
+            conditions.append(f"memory_type = '{_esc(memory_type)}'")
         search = search.where(" AND ".join(conditions), prefilter=True)
 
         results = search.limit(limit).to_list()
@@ -212,7 +219,7 @@ class ChixinheSearch:
             try:
                 mem_id = r.get("id")
                 if mem_id:
-                    mem_table.delete(f"id = '{mem_id}'")
+                    mem_table.delete(f"id = '{_esc(mem_id)}'")
                     r["access_count"] = r.get("access_count", 0) + 1
                     r["last_accessed"] = now_iso()
                     clean = {k: v for k, v in r.items() if not k.startswith("_")}

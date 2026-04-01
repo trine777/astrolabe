@@ -30,6 +30,13 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
+def _esc(value: str) -> str:
+    """Escape single quotes for LanceDB SQL where clauses."""
+    if value is None:
+        return ""
+    return str(value).replace("'", "''")
+
+
 class XingkongzuoStore:
     """
     星空座存储 - 星图的 LanceDB 存储层
@@ -116,7 +123,7 @@ class XingkongzuoStore:
         table = self.get_table("collections")
         results = (
             table.search()
-            .where(f"id = '{id}'", prefilter=True)
+            .where(f"id = '{_esc(id)}'", prefilter=True)
             .limit(1)
             .to_list()
         )
@@ -132,9 +139,9 @@ class XingkongzuoStore:
         query = table.search()
         conditions: list[str] = []
         if status:
-            conditions.append(f"status = '{status}'")
+            conditions.append(f"status = '{_esc(status)}'")
         if collection_type:
-            conditions.append(f"collection_type = '{collection_type}'")
+            conditions.append(f"collection_type = '{_esc(collection_type)}'")
         if conditions:
             query = query.where(" AND ".join(conditions), prefilter=True)
         return query.limit(1000).to_list()
@@ -151,7 +158,7 @@ class XingkongzuoStore:
             return None
         kwargs["updated_at"] = now_iso()
         table = self.get_table("collections")
-        table.delete(f"id = '{id}'")
+        table.delete(f"id = '{_esc(id)}'")
         existing.update(kwargs)
         # Clean up any non-schema fields that might come from search results
         for key in list(existing.keys()):
@@ -163,10 +170,10 @@ class XingkongzuoStore:
     def delete_collection(self, id: str) -> bool:
         """Delete a collection and all its documents."""
         table = self.get_table("collections")
-        table.delete(f"id = '{id}'")
+        table.delete(f"id = '{_esc(id)}'")
         # Also delete all documents in this collection
         doc_table = self.get_table("documents")
-        doc_table.delete(f"collection_id = '{id}'")
+        doc_table.delete(f"collection_id = '{_esc(id)}'")
         return True
 
     # ------------------------------------------------------------------
@@ -189,7 +196,7 @@ class XingkongzuoStore:
         table = self.get_table("documents")
         results = (
             table.search()
-            .where(f"id = '{id}'", prefilter=True)
+            .where(f"id = '{_esc(id)}'", prefilter=True)
             .limit(1)
             .to_list()
         )
@@ -205,7 +212,7 @@ class XingkongzuoStore:
         query = table.search()
         if collection_id:
             query = query.where(
-                f"collection_id = '{collection_id}'", prefilter=True
+                f"collection_id = '{_esc(collection_id)}'", prefilter=True
             )
         return query.limit(limit).to_list()
 
@@ -216,7 +223,7 @@ class XingkongzuoStore:
             return None
         kwargs["updated_at"] = now_iso()
         table = self.get_table("documents")
-        table.delete(f"id = '{id}'")
+        table.delete(f"id = '{_esc(id)}'")
         existing.update(kwargs)
         for key in list(existing.keys()):
             if key.startswith("_"):
@@ -274,11 +281,11 @@ class XingkongzuoStore:
         table = self.get_table("relations")
         conditions: list[str] = []
         if source_id:
-            conditions.append(f"source_id = '{source_id}'")
+            conditions.append(f"source_id = '{_esc(source_id)}'")
         if target_id:
-            conditions.append(f"target_id = '{target_id}'")
+            conditions.append(f"target_id = '{_esc(target_id)}'")
         if relation_type:
-            conditions.append(f"relation_type = '{relation_type}'")
+            conditions.append(f"relation_type = '{_esc(relation_type)}'")
         query = table.search()
         if conditions:
             query = query.where(" AND ".join(conditions), prefilter=True)
@@ -287,7 +294,7 @@ class XingkongzuoStore:
     def delete_relation(self, id: str) -> bool:
         """Delete a single relation by ID."""
         table = self.get_table("relations")
-        table.delete(f"id = '{id}'")
+        table.delete(f"id = '{_esc(id)}'")
         return True
 
     # ------------------------------------------------------------------
@@ -310,9 +317,9 @@ class XingkongzuoStore:
         table = self.get_table("events")
         conditions: list[str] = []
         if target_id:
-            conditions.append(f"target_id = '{target_id}'")
+            conditions.append(f"target_id = '{_esc(target_id)}'")
         if event_type:
-            conditions.append(f"event_type = '{event_type}'")
+            conditions.append(f"event_type = '{_esc(event_type)}'")
         query = table.search()
         if conditions:
             query = query.where(" AND ".join(conditions), prefilter=True)
@@ -336,9 +343,9 @@ class XingkongzuoStore:
     ) -> list[dict]:
         """Retrieve memories for an agent with optional type filter."""
         table = self.get_table("agent_memories")
-        conditions = [f"agent_id = '{agent_id}'"]
+        conditions = [f"agent_id = '{_esc(agent_id)}'"]
         if memory_type:
-            conditions.append(f"memory_type = '{memory_type}'")
+            conditions.append(f"memory_type = '{_esc(memory_type)}'")
         query = table.search()
         query = query.where(" AND ".join(conditions), prefilter=True)
         return query.limit(limit).to_list()
@@ -352,10 +359,10 @@ class XingkongzuoStore:
         table = self.get_table("agent_memories")
         if memory_type:
             table.delete(
-                f"agent_id = '{agent_id}' AND memory_type = '{memory_type}'"
+                f"agent_id = '{_esc(agent_id)}' AND memory_type = '{_esc(memory_type)}'"
             )
         else:
-            table.delete(f"agent_id = '{agent_id}'")
+            table.delete(f"agent_id = '{_esc(agent_id)}'")
         return True
 
     def decay_memories(
@@ -375,9 +382,9 @@ class XingkongzuoStore:
             old_importance = mem.get("importance", 0.5)
             new_importance = old_importance * decay_factor
             if new_importance < 0.01:
-                table.delete(f"id = '{mem['id']}'")
+                table.delete(f"id = '{_esc(mem['id'])}'")
             else:
-                table.delete(f"id = '{mem['id']}'")
+                table.delete(f"id = '{_esc(mem['id'])}'")
                 mem["importance"] = new_importance
                 for key in list(mem.keys()):
                     if key.startswith("_"):
@@ -484,7 +491,7 @@ class XingkongzuoStore:
         table = self.get_table("universe_goals")
         results = (
             table.search()
-            .where(f"id = '{goal_id}'", prefilter=True)
+            .where(f"id = '{_esc(goal_id)}'", prefilter=True)
             .limit(1)
             .to_list()
         )
@@ -499,7 +506,7 @@ class XingkongzuoStore:
         table = self.get_table("universe_goals")
         query = table.search()
         if status:
-            query = query.where(f"status = '{status}'", prefilter=True)
+            query = query.where(f"status = '{_esc(status)}'", prefilter=True)
         return query.limit(limit).to_list()
 
     def update_goal(self, goal_id: str, **kwargs) -> Optional[dict]:
@@ -509,7 +516,7 @@ class XingkongzuoStore:
             return None
         kwargs["updated_at"] = now_iso()
         table = self.get_table("universe_goals")
-        table.delete(f"id = '{goal_id}'")
+        table.delete(f"id = '{_esc(goal_id)}'")
         existing.update(kwargs)
         for key in list(existing.keys()):
             if key.startswith("_"):
@@ -540,7 +547,7 @@ class XingkongzuoStore:
         table = self.get_table("universe_deltas")
         results = (
             table.search()
-            .where(f"id = '{delta_id}'", prefilter=True)
+            .where(f"id = '{_esc(delta_id)}'", prefilter=True)
             .limit(1)
             .to_list()
         )
@@ -556,7 +563,7 @@ class XingkongzuoStore:
         table = self.get_table("universe_deltas")
         conditions: list[str] = []
         if goal_id:
-            conditions.append(f"goal_id = '{goal_id}'")
+            conditions.append(f"goal_id = '{_esc(goal_id)}'")
         if is_executed is not None:
             conditions.append(f"is_executed = {is_executed}")
         query = table.search()
@@ -570,7 +577,7 @@ class XingkongzuoStore:
         if not existing:
             return None
         table = self.get_table("universe_deltas")
-        table.delete(f"id = '{delta_id}'")
+        table.delete(f"id = '{_esc(delta_id)}'")
         existing.update(kwargs)
         for key in list(existing.keys()):
             if key.startswith("_"):
