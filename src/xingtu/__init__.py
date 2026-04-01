@@ -220,6 +220,14 @@ class XingTuService:
         """添加文档（自动嵌入）"""
         self._ensure_initialized()
         result = self._ingest.ingest_texts(texts, collection_id, created_by=created_by)
+        if result.documents_added > 0:
+            # 更新集合的 item_count
+            col = self.store.get_collection(collection_id)
+            if col:
+                current_count = col.get("item_count", 0)
+                self.store.update_collection(
+                    collection_id, item_count=current_count + result.documents_added
+                )
         self.events.emit(
             event_type="created",
             target_type="document",
@@ -560,6 +568,18 @@ class XingTuService:
         top_count = -1
         for c in page:
             count = c.get("item_count", 0)
+            # 如果 item_count 为 0 但实际有文档，用实际数量
+            if count == 0:
+                actual_docs = self.store.list_documents(
+                    collection_id=c.get("id", ""), limit=1
+                )
+                if actual_docs:
+                    all_docs = self.store.list_documents(
+                        collection_id=c.get("id", ""), limit=10000
+                    )
+                    count = len(all_docs)
+                    # 顺便修复存储中的 item_count
+                    self.store.update_collection(c.get("id", ""), item_count=count)
             entry = {
                 "id": c.get("id", ""),
                 "name": c.get("name", ""),
