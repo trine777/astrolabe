@@ -1,0 +1,76 @@
+# 跨数据联动查询行技
+# 星图 (XingTu) v0.1.0
+
+id: xingji.cross_data_query_v0
+name: 跨数据联动查询行技
+version: 0.1.0
+description: 使用自然语言进行跨数据源联动查询
+
+# 组成胞式
+cells:
+  - nl_parse_cell
+  - relation_resolve_cell
+  - query_execute_cell
+  - result_visualize_cell
+
+# 流程定义
+flow:
+  type: sequential
+  steps:
+    - id: parse_query
+      cell: nl_parse_cell
+      
+    - id: resolve_relations
+      cell: relation_resolve_cell
+      input_mapping:
+        objects: "{{parse_query.output.referenced_objects}}"
+      
+    - id: execute
+      cell: query_execute_cell
+      input_mapping:
+        query: "{{parse_query.output.sql}}"
+        query_type: sql
+        
+    - id: visualize
+      cell: result_visualize_cell
+      input_mapping:
+        result_set: "{{execute.output.result_set}}"
+      condition: "{{execute.output.result_set.row_count > 0}}"
+
+# 输入契约
+input_contract:
+  - name: natural_language_query
+    type: String
+    required: true
+    description: 自然语言查询
+    
+  - name: target_objects
+    type: "[UUID]"
+    required: false
+    description: 限定查询范围的对象
+
+# 输出契约
+output_contract:
+  - name: result
+    type: QueryResult
+    description: 查询结果
+    
+  - name: visualization
+    type: ChartSpec
+    description: 可视化规格
+    
+  - name: insight
+    type: String
+    description: 自动生成的洞察
+
+# 标签
+tags:
+  - 数据分析
+  - 联动查询
+  - 自然语言
+  - 可视化
+
+# 能量消耗估算
+energy_estimate:
+  min: 5
+  max: 15

@@ -1,0 +1,63 @@
+# CSV 解析胞式
+# 星图 (XingTu) v0.1.0
+
+id: csv_parse_cell
+name: CSV 解析胞式
+version: 0.1.0
+description: 解析 CSV 文件，提取列结构、数据类型和样本数据
+
+organ_pins:
+  - organ: 语界枢
+    role: input_receiver
+    action: receive_file
+    description: 接收用户拖入的文件
+
+mech_pins:
+  - type: file_io
+    level: L0
+    action: read_csv
+    params:
+      encoding: auto_detect
+      delimiter: auto_detect
+      preview_rows: 100
+      max_sample_values: 10
+
+input:
+  - name: file_url
+    type: URL
+    required: true
+    description: CSV 文件路径
+
+output:
+  - name: columns
+    type: "[ColumnInfo]"
+    description: 列信息数组
+    
+  - name: row_count
+    type: Int
+    description: 数据行数
+    
+  - name: sample_data
+    type: "[[String]]"
+    description: 样本数据
+    
+  - name: encoding
+    type: String
+    description: 检测到的编码
+
+errors:
+  - code: E001
+    condition: file_not_found
+    message: 文件不存在
+    
+  - code: E002
+    condition: unsupported_format
+    message: 不支持的文件格式
+    
+  - code: E003
+    condition: parse_failed
+    message: CSV 解析失败
+
+energy:
+  base_cost: 1
+  per_mb_cost: 0.5

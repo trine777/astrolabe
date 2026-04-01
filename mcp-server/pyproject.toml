@@ -1,0 +1,13 @@
+[project]
+name = "xingtu-mcp"
+version = "0.1.0"
+description = "星图 MCP Server - 让 AI 也能使用星图数据系统"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+xingtu-mcp = "xingtu_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

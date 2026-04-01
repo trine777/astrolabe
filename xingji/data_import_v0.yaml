@@ -1,0 +1,81 @@
+# 数据导入行技
+# 星图 (XingTu) v0.1.0
+
+id: xingji.data_import_v0
+name: 数据导入行技
+version: 0.1.0
+description: 完整的 CSV 数据导入流程，包含解析、AI 推断、用户确认
+
+# 组成胞式
+cells:
+  - csv_parse_cell
+  - meta_infer_cell
+  - meta_confirm_cell
+
+# 流程定义
+flow:
+  type: sequential
+  steps:
+    - id: parse
+      cell: csv_parse_cell
+      on_success: infer
+      on_failure: abort
+      error_message: "文件解析失败"
+      
+    - id: infer
+      cell: meta_infer_cell
+      input_mapping:
+        schema_info: "{{parse.output}}"
+      on_success: confirm
+      on_failure: skip_to_confirm
+      
+    - id: confirm
+      cell: meta_confirm_cell
+      input_mapping:
+        draft_object: "{{infer.output.object_suggestion}}"
+      on_success: complete
+      on_failure: retry
+      max_retries: 3
+
+# 输入契约
+input_contract:
+  - name: file_url
+    type: URL
+    required: true
+    description: CSV 文件路径
+    
+  - name: import_options
+    type: ImportOptions
+    required: false
+    description: 导入选项
+
+# 输出契约
+output_contract:
+  - name: object_id
+    type: UUID
+    description: 创建的元数据对象 ID
+    
+  - name: status
+    type: ImportStatus
+    description: 导入状态
+
+# 标签
+tags:
+  - 数据导入
+  - CSV
+  - 元数据
+  - Flow City
+
+# 适用局谱
+suitable_jups:
+  - 数据准备
+  - 业务建模
+
+# 能量消耗估算
+energy_estimate:
+  min: 7
+  max: 20
+  factors:
+    - 文件大小
+    - 列数量
+    - AI 调用次数

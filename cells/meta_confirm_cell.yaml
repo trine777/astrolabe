@@ -1,0 +1,51 @@
+# 元数据确认胞式
+# 星图 (XingTu) v0.1.0
+
+id: meta_confirm_cell
+name: 元数据确认胞式
+version: 0.1.0
+description: 用户确认或修改 AI 推断的元数据，写入星空座世界模型
+
+organ_pins:
+  - organ: 语界枢
+    role: ui_presenter
+    action: present_editor_ui
+    description: 呈现元数据编辑界面
+    
+  - organ: 星空座
+    role: storage
+    action: store_confirmed_meta
+    description: 存储确认后的元数据
+    
+  - organ: 影澜轩
+    role: event_emitter
+    action: emit_confirmation_event
+    description: 发送确认事件到事件流
+
+input:
+  - name: draft_object
+    type: MetaObject
+    required: true
+    description: AI 推断的草稿对象
+    
+  - name: user_edits
+    type: "[MetaEdit]"
+    required: false
+    description: 用户的修改
+
+output:
+  - name: confirmed_object
+    type: MetaObject
+    description: 确认后的元数据对象
+    
+  - name: event_id
+    type: UUID
+    description: 确认事件 ID
+
+state_transition:
+  from: draft
+  to: confirmed
+  condition: user_confirms
+
+energy:
+  base_cost: 1

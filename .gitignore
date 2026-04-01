@@ -1,0 +1,50 @@
+# Swift
+.build/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+Package.resolved
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+
+# Environment
+.env
+
+# Data
+data/
+logs/
+*.db
+*.lance/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Test / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Claude
+.claude/

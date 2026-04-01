@@ -1,0 +1,12 @@
+# 添加 Docker 部署相关文件到 .gitignore
+
+# Docker 相关
+.env
+docker-compose.override.yml
+
+# 数据目录
+data/
+logs/
+
+# Docker 构建缓存
+.dockerignore

@@ -1,0 +1,6 @@
+id,name,email,age,created_at,amount
+1,张三,zhangsan@example.com,28,2024-01-15,1500.50
+2,李四,lisi@example.com,35,2024-02-20,2300.00
+3,王五,wangwu@example.com,42,2024-03-10,890.75
+4,赵六,zhaoliu@example.com,31,2024-04-05,3200.25
+5,钱七,qianqi@example.com,26,2024-05-18,1800.00

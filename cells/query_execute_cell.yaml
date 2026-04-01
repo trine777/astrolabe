@@ -1,0 +1,60 @@
+# 查询执行胞式
+# 星图 (XingTu) v0.1.0
+
+id: query_execute_cell
+name: 查询执行胞式
+version: 0.1.0
+description: 解析查询意图并执行，支持自然语言和 SQL
+
+organ_pins:
+  - organ: 星空座
+    role: semantic_resolver
+    action: resolve_semantic_query
+    description: 使用世界模型解析查询语义
+    
+  - organ: 炽心核
+    role: authorizer
+    action: authorize_execution
+    description: 审批执行权限，控制能量消耗
+    
+  - organ: 影澜轩
+    role: logger
+    action: log_query_result
+    description: 记录查询结果和洞察
+
+mech_pins:
+  - type: sql
+    level: L0
+    action: execute
+    params:
+      timeout_ms: 30000
+      max_rows: 10000
+
+input:
+  - name: query
+    type: String
+    required: true
+    description: 查询语句（自然语言或 SQL）
+    
+  - name: query_type
+    type: QueryType
+    required: true
+    description: 查询类型 (nl | sql)
+    
+  - name: context
+    type: QueryContext
+    required: false
+    description: 查询上下文
+
+output:
+  - name: result_set
+    type: DataFrame
+    description: 查询结果
+    
+  - name: execution_stats
+    type: ExecutionStats
+    description: 执行统计
+
+energy:
+  base_cost: 2
+  per_1k_rows_cost: 0.1

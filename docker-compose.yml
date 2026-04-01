@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  # 星图 MCP Server
+  xingtu-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xingtu-mcp
+    restart: unless-stopped
+
+    # 环境变量配置
+    environment:
+      # 数据目录
+      - XINGTU_DATA_DIR=/data
+
+      # 日志级别
+      - XINGTU_LOG_LEVEL=INFO
+
+      # 嵌入模型配置（从 .env 读取）
+      - XINGTU_EMBEDDING_PROVIDER=${XINGTU_EMBEDDING_PROVIDER:-sentence-transformers}
+
+      # OpenAI 配置（如果使用 OpenAI）
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+
+      # Ollama 配置（如果使用 Ollama）
+      # - OLLAMA_BASE_URL=http://ollama:11434
+
+      # 嵌入模型名称（根据 provider 使用不同的模型）
+      - XINGTU_EMBEDDING_MODEL=${XINGTU_EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+
+    # 数据卷挂载
+    volumes:
+      # 持久化数据目录
+      - xingtu-data:/data
+
+      # 可选：挂载本地配置文件
+      # - ./config.yaml:/app/config.yaml:ro
+
+      # 可选：挂载日志目录
+      - xingtu-logs:/app/logs
+
+    # 网络配置
+    networks:
+      - xingtu-network
+
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "python", "-c", "from xingtu import XingTuService; s = XingTuService(); s.initialize(); print('OK')"]
+      interval: 30s
+      timeout: 60s
+      retries: 3
+      start_period: 120s
+
+  # 可选：Ollama 服务（如果使用本地嵌入模型）
+  ollama:
+    image: ollama/ollama:latest
+    container_name: xingtu-ollama
+    restart: unless-stopped
+    profiles:
+      - ollama
+
+    volumes:
+      - ollama-data:/root/.ollama
+
+    networks:
+      - xingtu-network
+
+    ports:
+      - "11434:11434"
+
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+
+# 数据卷定义
+volumes:
+  xingtu-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${XINGTU_DATA_PATH:-./data}
+
+  xingtu-logs:
+    driver: local
+
+  ollama-data:
+    driver: local
+
+# 网络定义
+networks:
+  xingtu-network:
+    driver: bridge

@@ -1,0 +1,61 @@
+# 元数据推断胞式
+# 星图 (XingTu) v0.1.0
+
+id: meta_infer_cell
+name: 元数据推断胞式
+version: 0.1.0
+description: 调用 AI 分析数据结构，推断语义类型和业务含义
+
+organ_pins:
+  - organ: 星空座
+    role: context_provider
+    action: provide_world_model_context
+    description: 提供已有世界模型作为上下文
+    
+  - organ: 影澜轩
+    role: observer
+    action: observe_inference
+    description: 观察 AI 推断过程，记录洞察
+
+mech_pins:
+  - type: http
+    level: L0
+    action: call_llm
+    params:
+      endpoint: openai_api
+      model: gpt-4
+      temperature: 0.3
+      max_tokens: 2000
+      prompt_template: meta_inference_v1
+
+input:
+  - name: schema_info
+    type: SchemaInfo
+    required: true
+    description: 数据结构信息
+    
+  - name: existing_objects
+    type: "[MetaObject]"
+    required: false
+    description: 已有的元数据对象
+
+output:
+  - name: object_suggestion
+    type: ObjectSuggestion
+    description: 对象命名和描述建议
+    
+  - name: property_suggestions
+    type: "[PropertySuggestion]"
+    description: 每列的语义类型和业务含义建议
+    
+  - name: potential_relations
+    type: "[RelationSuggestion]"
+    description: 可能的关系建议
+    
+  - name: data_quality_notes
+    type: "[String]"
+    description: 数据质量观察
+
+energy:
+  base_cost: 5
+  per_column_cost: 0.5
