@@ -528,10 +528,245 @@ class XingTuService:
             newest_memory=timestamps[-1] if timestamps else None,
         ).model_dump()
 
+    # ===== 分层投影 (Layered Projection) =====
+    #
+    # 核心原则：Agent 不需要一次看全部元数据。
+    # L0 → L1 → L2 → L3 逐层钻入，每层 token 开销可控。
+    #
+    # L0: 位面索引     ~200 tokens   "有哪些域？"
+    # L1: 位面概览     ~500 tokens   "这个域有什么实体？"
+    # L2: 实体详情     ~200 tokens   "这个实体有什么字段？"
+    # L3: 关系图       ~300 tokens   "这些域怎么连？"
+
+    def projection_l0(self, limit: int = 20, offset: int = 0) -> dict:
+        """
+        L0: 位面索引 — 系统全局概览
+
+        返回集合列表（分页），附带下一步建议。
+        适合冷启动时 Agent 了解"这个系统里有什么"。
+
+        Args:
+            limit: 最多返回多少位面（默认 20）
+            offset: 跳过前 N 个
+        """
+        self._ensure_initialized()
+        stats = self.store.table_stats()
+        all_collections = self.store.list_collections()
+        total = len(all_collections)
+        page = all_collections[offset:offset + limit]
+
+        planes = []
+        top_plane = None
+        top_count = -1
+        for c in page:
+            count = c.get("item_count", 0)
+            entry = {
+                "id": c.get("id", ""),
+                "name": c.get("name", ""),
+                "description": (c.get("description") or "")[:60],
+                "type": c.get("collection_type", ""),
+                "item_count": count,
+            }
+            planes.append(entry)
+            if count > top_count:
+                top_count = count
+                top_plane = entry
+
+        return {
+            "level": "L0",
+            "summary": {
+                "total_planes": total,
+                "total_entities": stats.get("documents", 0),
+                "total_relations": stats.get("relations", 0),
+            },
+            "pagination": {
+                "offset": offset,
+                "limit": limit,
+                "returned": len(planes),
+                "has_more": (offset + limit) < total,
+            },
+            "planes": planes,
+            "hint": {
+                "next": f"projection_l1('{top_plane['id']}')" if top_plane else None,
+                "reason": f"位面 '{top_plane['name']}' 有最多实体 ({top_count})" if top_plane else None,
+            },
+        }
+
+    def projection_l1(
+        self,
+        collection_id: str,
+        limit: int = 30,
+        offset: int = 0,
+    ) -> dict:
+        """
+        L1: 位面概览 — 单个位面的元信息 + 实体列表（分页）
+
+        Args:
+            collection_id: 集合 ID
+            limit: 最多返回多少实体（默认 30）
+            offset: 跳过前 N 个
+        """
+        self._ensure_initialized()
+
+        col = self.store.get_collection(collection_id)
+        if not col:
+            return {"ok": False, "level": "L1", "error": f"Collection not found: {collection_id}"}
+
+        all_docs = self.store.list_documents(collection_id=collection_id, limit=1000)
+        total = len(all_docs)
+        page = all_docs[offset:offset + limit]
+
+        entities = []
+        for d in page:
+            content = d.get("content", "")
+            # 结构化摘要：尝试提取 entity name 和 type
+            label = content.split("|")[0].strip()[:80] if "|" in content else content[:80]
+            entities.append({
+                "id": d.get("id", ""),
+                "label": label,
+                "content_type": d.get("content_type", ""),
+            })
+
+        # 该位面涉及的关系
+        rels_out = self.store.get_relations(source_id=collection_id)
+        rels_in = self.store.get_relations(target_id=collection_id)
+        rel_summaries = []
+        seen = set()
+        for r in rels_out + rels_in:
+            rid = r.get("id", "")
+            if rid in seen:
+                continue
+            seen.add(rid)
+            rel_summaries.append({
+                "type": r.get("relation_type", ""),
+                "description": (r.get("description") or "")[:60],
+                "confidence": r.get("confidence", 0),
+            })
+
+        return {
+            "ok": True,
+            "level": "L1",
+            "plane": {
+                "id": col.get("id", ""),
+                "name": col.get("name", ""),
+                "description": col.get("description", ""),
+                "type": col.get("collection_type", ""),
+                "status": col.get("status", ""),
+                "tags": col.get("tags", []),
+            },
+            "pagination": {
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "returned": len(entities),
+                "has_more": (offset + limit) < total,
+            },
+            "entities": entities,
+            "relations": rel_summaries,
+        }
+
+    def projection_l2(self, document_id: str) -> dict:
+        """
+        L2: 实体详情 — 单个实体的完整信息
+
+        返回完整内容和解析后的元数据。
+        """
+        self._ensure_initialized()
+
+        doc = self.store.get_document(document_id)
+        if not doc:
+            return {"ok": False, "level": "L2", "error": f"Document not found: {document_id}"}
+
+        # 解析 metadata_json
+        metadata = None
+        raw_meta = doc.get("metadata_json")
+        if raw_meta:
+            try:
+                import json as _json
+                metadata = _json.loads(raw_meta)
+            except (ValueError, TypeError):
+                metadata = raw_meta  # 解析失败保留原始字符串
+
+        return {
+            "ok": True,
+            "level": "L2",
+            "entity": {
+                "id": doc.get("id", ""),
+                "collection_id": doc.get("collection_id", ""),
+                "content": doc.get("content", ""),
+                "content_type": doc.get("content_type", ""),
+                "tags": doc.get("tags", []),
+                "source_uri": doc.get("source_uri"),
+                "metadata": metadata,
+                "created_at": doc.get("created_at", ""),
+            },
+        }
+
+    def projection_l3(
+        self,
+        source_id: Optional[str] = None,
+        target_id: Optional[str] = None,
+        relation_type: Optional[str] = None,
+        limit: int = 50,
+    ) -> dict:
+        """
+        L3: 关系图 — 实体/位面间的关系（分页，双向过滤）
+
+        Args:
+            source_id: 按源过滤
+            target_id: 按目标过滤
+            relation_type: 按关系类型过滤
+            limit: 最多返回多少条
+        """
+        self._ensure_initialized()
+
+        # 收集关系（支持 source 和 target 双向过滤）
+        if source_id and target_id:
+            rels_s = self.store.get_relations(source_id=source_id, relation_type=relation_type)
+            relations = [r for r in rels_s if r.get("target_id") == target_id]
+        elif source_id:
+            relations = self.store.get_relations(source_id=source_id, relation_type=relation_type)
+        elif target_id:
+            relations = self.store.get_relations(target_id=target_id, relation_type=relation_type)
+        else:
+            relations = self.store.get_relations(relation_type=relation_type)
+
+        total = len(relations)
+        page = relations[:limit]
+
+        edges = []
+        for r in page:
+            edges.append({
+                "id": r.get("id", ""),
+                "source_id": r.get("source_id", ""),
+                "target_id": r.get("target_id", ""),
+                "type": r.get("relation_type", ""),
+                "description": (r.get("description") or "")[:80],
+                "confidence": r.get("confidence", 0),
+                "is_ai_inferred": r.get("is_ai_inferred", False),
+            })
+
+        return {
+            "ok": True,
+            "level": "L3",
+            "filter": {
+                "source_id": source_id,
+                "target_id": target_id,
+                "relation_type": relation_type,
+            },
+            "pagination": {
+                "total": total,
+                "returned": len(edges),
+                "limit": limit,
+                "has_more": total > limit,
+            },
+            "relations": edges,
+        }
+
     # ===== 系统 =====
 
     def get_world_model(self) -> dict:
-        """获取世界模型"""
+        """获取世界模型（全量，大规模数据下请用 projection_l0-l3 替代）"""
         self._ensure_initialized()
         return self.store.get_world_model()
 
