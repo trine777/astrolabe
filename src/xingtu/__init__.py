@@ -639,8 +639,12 @@ class XingTuService:
         entities = []
         for d in page:
             content = d.get("content", "")
-            # 结构化摘要：尝试提取 entity name 和 type
-            label = content.split("|")[0].strip()[:80] if "|" in content else content[:80]
+            # 结构化摘要：提取 entity name + type（前两个 | 段）
+            if "|" in content:
+                parts = [p.strip() for p in content.split("|")]
+                label = " | ".join(parts[:2])[:100]  # name + type
+            else:
+                label = content[:100]
             entities.append({
                 "id": d.get("id", ""),
                 "label": label,
