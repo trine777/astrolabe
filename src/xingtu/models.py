@@ -240,7 +240,7 @@ class UniverseGoal(LanceModel):
 
     id: str = Field(description="目标唯一标识")
     intent_text: str = Field(description="原始意图文本")
-    intent_vector: Vector(384) = Field(description="意图嵌入向量")  # type: ignore[valid-type]
+    intent_vector: Vector(1536) = Field(description="意图嵌入向量")  # type: ignore[valid-type]
     status: str = Field(default=GoalStatus.pending.value, description="目标状态")
 
     # 预期宇宙状态（存储为 JSON 字符串）
