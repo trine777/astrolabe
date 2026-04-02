@@ -31,40 +31,24 @@ class IntentTranslator:
         ai_provider: str = "openai",
         model: str = "gpt-4",
     ):
-        """
-        初始化意图翻译器
-
-        Args:
-            embedding_manager: 嵌入管理器
-            ai_provider: AI 提供商
-            model: 使用的模型
-        """
         self.embedding_manager = embedding_manager or EmbeddingManager()
         self.ai_provider = ai_provider
         self.model = model
 
-    async def translate(
+    def translate(
         self,
         intent_text: str,
         world_context: Dict[str, Any],
         user_id: str = "user",
     ) -> UniverseGoal:
         """
-        翻译意图为结构化目标
-
-        Args:
-            intent_text: 用户意图文本
-            world_context: 当前世界模型上下文
-            user_id: 用户 ID
-
-        Returns:
-            UniverseGoal: 结构化的宇宙目标
+        翻译意图为结构化目标（同步方法）
         """
         # 1. 生成意图向量
-        intent_vector = await self._embed_intent(intent_text)
+        intent_vector = self.embedding_manager.embed_text(intent_text)
 
         # 2. 调用 AI 理解意图
-        understanding = await self._understand_intent(intent_text, world_context)
+        understanding = self._understand_intent(intent_text, world_context)
 
         # 3. 构建 UniverseGoal
         goal = UniverseGoal(
@@ -84,51 +68,17 @@ class IntentTranslator:
 
         return goal
 
-    async def _embed_intent(self, intent_text: str) -> List[float]:
-        """生成意图的嵌入向量"""
-        return self.embedding_manager.embed_text(intent_text)
-
-    async def _understand_intent(
+    def _understand_intent(
         self, intent_text: str, world_context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        调用 AI 理解意图
-
-        Args:
-            intent_text: 意图文本
-            world_context: 世界模型上下文
-
-        Returns:
-            理解结果，包含：
-            - expected_collections: 预期的集合状态
-            - expected_documents: 预期的文档状态
-            - expected_relations: 预期的关系状态
-            - confidence: 置信度
-            - reasoning: 推理过程
-        """
-        # 构建 AI 提示词
+        """调用 AI 理解意图"""
         prompt = self._build_understanding_prompt(intent_text, world_context)
-
-        # 调用 AI（这里需要实际的 AI 调用实现）
-        # 暂时返回模拟结果
-        understanding = await self._call_ai(prompt)
-
-        return understanding
+        return self._call_ai(prompt)
 
     def _build_understanding_prompt(
         self, intent_text: str, world_context: Dict[str, Any]
     ) -> str:
-        """
-        构建 AI 理解提示词
-
-        Args:
-            intent_text: 意图文本
-            world_context: 世界模型上下文
-
-        Returns:
-            提示词字符串
-        """
-        # 提取世界模型关键信息
+        """构建 AI 理解提示词"""
         collections_summary = self._summarize_collections(
             world_context.get("collections", [])
         )
@@ -182,7 +132,7 @@ class IntentTranslator:
 }}
 
 注意：
-1. 只其他文字
+1. 只输出 JSON，不要其他文字
 2. 如果意图不明确，confidence 设低一些
 3. action 必须是 create/update/delete 之一
 4. 尽量复用现有集合，避免重复创建
@@ -195,7 +145,7 @@ class IntentTranslator:
             return "（无）"
 
         lines = []
-        for col in collections[:10]:  # 最多显示 10 个
+        for col in collections[:10]:
             lines.append(
                 f"- {col.get('name', 'Unknown')} ({col.get('collection_type', 'unknown')}): "
                 f"{col.get('item_count', 0)} 项"
@@ -206,15 +156,13 @@ class IntentTranslator:
 
         return "\n".join(lines)
 
-    async def _call_ai(self, prompt: str) -> Dict[str, Any]:
+    def _call_ai(self, prompt: str) -> Dict[str, Any]:
         """
         调用 AI API
 
         TODO: 实现实际的 AI 调用
         目前返回模拟结果
         """
-        # 这里应该调用 OpenAI/Claude 等 API
-        # 暂时返回一个示例结果
         return {
             "confidence": 0.85,
             "reasoning": "用户意图明确，需要创建新的数据集合",
@@ -224,7 +172,7 @@ class IntentTranslator:
                     "name": "示例集合",
                     "description": "根据用户意图创建的集合",
                     "collection_type": "documents",
-               "tags": ["auto-created"],
+                    "tags": ["auto-created"],
                 }
             ],
             "expected_documents": [],
@@ -233,24 +181,13 @@ class IntentTranslator:
 
 
 class IntentValidator:
-    """
-    意图验证器
-
-    验证生成的 UniverseGoal 是否合理
-    """
+    """意图验证器"""
 
     def validate(self, goal: UniverseGoal) -> tuple[bool, Optional[str]]:
-        """
-        验证目标
-
-        Returns:
-            (is_valid, error_message)
-        """
-        # 检查置信度
+        """验证目标"""
         if goal.confidence < 0.3:
             return False, "意图理解置信度过低，请提供更明确的描述"
 
-        # 检查是否有预期状态（解析 JSON 字符串）
         try:
             expected_collections = json.loads(goal.expected_collections)
             expected_documents = json.loads(goal.expected_documents)
@@ -266,7 +203,6 @@ class IntentValidator:
         if not has_expectations:
             return False, "无法从意图中提取出具体的操作目标"
 
-        # 检查 action 字段
         for col in expected_collections:
             if col.get("action") not in ["create", "update", "delete"]:
                 return False, f"集合操作类型无效: {col.get('action')}"

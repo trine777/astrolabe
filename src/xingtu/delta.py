@@ -25,45 +25,36 @@ class DeltaGenerator:
     """
 
     def __init__(self):
-        """初始化差分生成器"""
         pass
 
-    async def generate_deltas(
+    def generate_deltas(
         self,
         goal: UniverseGoal,
         world_context: Dict[str, Any],
     ) -> List[UniverseDelta]:
         """
-        生成差分列表
-
-        Args:
-            goal: 宇宙目标（预期状态）
-            world_context: 当前世界模型（实际状态）
-
-        Returns:
-            UniverseDelta 列表，每个差分对应一个行动
+        生成差分列表（同步方法）
         """
         deltas: List[UniverseDelta] = []
 
-        # 解析 JSON 字符串为列表
         expected_collections = json.loads(goal.expected_collections)
         expected_documents = json.loads(goal.expected_documents)
         expected_relations = json.loads(goal.expected_relations)
 
         # 1. 计算集合差分
-        collection_deltas = await self._compute_collection_deltas(
+        collection_deltas = self._compute_collection_deltas(
             expected_collections, world_context.get("collections", [])
         )
         deltas.extend(collection_deltas)
 
         # 2. 计算文档差分
-        document_deltas = await self._compute_document_deltas(
+        document_deltas = self._compute_document_deltas(
             expected_documents, world_context
         )
         deltas.extend(document_deltas)
 
         # 3. 计算关系差分
-        relation_deltas = await self._compute_relation_deltas(
+        relation_deltas = self._compute_relation_deltas(
             expected_relations, world_context
         )
         deltas.extend(relation_deltas)
@@ -77,7 +68,7 @@ class DeltaGenerator:
 
         return deltas
 
-    async def _compute_collection_deltas(
+    def _compute_collection_deltas(
         self,
         expected_collections: List[Dict[str, Any]],
         actual_collections: List[Dict[str, Any]],
@@ -89,28 +80,21 @@ class DeltaGenerator:
             action = expected.get("action")
 
             if action == "create":
-                # 检查是否已存在同名集合
                 existing = self._find_collection_by_name(
                     expected.get("name"), actual_collections
                 )
                 if existing:
-                    # 已存在，转为 update
                     delta = self._create_update_collection_delta(expected, existing)
                 else:
-                    # 不存在，创建新集合
                     delta = self._create_create_collection_delta(expected)
                 deltas.append(delta)
 
             elif action == "update":
-                # 查找目标集合
                 target_id = expected.get("id")
                 existing = self._find_collection_by_id(target_id, actual_collections)
                 if existing:
                     delta = self._create_update_collection_delta(expected, existing)
                     deltas.append(delta)
-                else:
-                    # 目标不存在，跳过或报错
-                    pass
 
             elif action == "delete":
                 target_id = expected.get("id")
@@ -121,7 +105,7 @@ class DeltaGenerator:
 
         return deltas
 
-    async def _compute_document_deltas(
+    def _compute_document_deltas(
         self,
         expected_documents: List[Dict[str, Any]],
         world_context: Dict[str, Any],
@@ -136,17 +120,9 @@ class DeltaGenerator:
                 delta = self._create_add_document_delta(expected)
                 deltas.append(delta)
 
-            elif action == "update":
-                # TODO: 实现文档更新逻辑
-                pass
-
-            elif action == "delete":
-                # TODO: 实现文档删除逻辑
-                pass
-
         return deltas
 
-    async def _compute_relation_deltas(
+    def _compute_relation_deltas(
         self,
         expected_relations: List[Dict[str, Any]],
         world_context: Dict[str, Any],
@@ -161,10 +137,6 @@ class DeltaGenerator:
                 delta = self._create_create_relation_delta(expected)
                 deltas.append(delta)
 
-            elif action == "delete":
-                # TODO: 实现关系删除逻辑
-                pass
-
         return deltas
 
     # ===== 差分创建辅助方法 =====
@@ -175,14 +147,14 @@ class DeltaGenerator:
         """创建"创建集合"差分"""
         return UniverseDelta(
             id=str(uuid.uuid4()),
-            goal_id="",  # 稍后填充
+            goal_id="",
             delta_type=DeltaType.create_collection.value,
             target_type="collection",
             target_id=None,
             expected_state=json.dumps(expected),
             actual_state=json.dumps({}),
             diff_details=json.dumps({"action": "create", "data": expected}),
-            priority=8,  # 创建集合优先级较高
+            priority=8,
             xingji_id="xingji.create_collection",
             xingji_params=json.dumps(
                 {
@@ -199,7 +171,6 @@ class DeltaGenerator:
         self, expected: Dict[str, Any], existing: Dict[str, Any]
     ) -> UniverseDelta:
         """创建"更新集合"差分"""
-        # 计算实际差异
         diff = self._compute_dict_diff(existing, expected)
 
         return UniverseDelta(
@@ -325,22 +296,9 @@ class DeltaGenerator:
 
 
 class DeltaPrioritizer:
-    """
-    差分优先级调整器
-
-    根据上下文动态调整差分的执行优先级
-    """
+    """差分优先级调整器"""
 
     def adjust_priorities(
         self, deltas: List[UniverseDelta], context: Dict[str, Any]
     ) -> List[UniverseDelta]:
-        """
-        调整差分优先级
-
-        规则：
-        1. 创建集合 > 添加文档 > 创建关系
-        2. 如果有依赖关系，被依赖的优先
-        3. 用户明确指定的优先
-        """
-        # TODO: 实现更复杂的优先级调整逻辑
         return deltas

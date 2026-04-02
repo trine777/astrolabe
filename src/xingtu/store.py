@@ -89,6 +89,17 @@ class XingkongzuoStore:
     # Collection CRUD
     # ------------------------------------------------------------------
 
+    def get_collection_by_name(self, name: str) -> Optional[dict]:
+        """Find a collection by name. Returns first match or None."""
+        table = self.get_table("collections")
+        results = (
+            table.search()
+            .where(f"name = '{_esc(name)}'", prefilter=True)
+            .limit(1)
+            .to_list()
+        )
+        return results[0] if results else None
+
     def create_collection(
         self,
         id: str,
@@ -99,7 +110,12 @@ class XingkongzuoStore:
         created_by: str = "system",
         metadata_json: Optional[str] = None,
     ) -> dict:
-        """Create a new collection. Returns the collection as dict."""
+        """Create a new collection. Returns existing if same name exists (idempotent)."""
+        # 幂等：同名集合直接返回已有的
+        existing = self.get_collection_by_name(name)
+        if existing:
+            return {k: v for k, v in existing.items() if not k.startswith("_")}
+
         now = now_iso()
         collection = Collection(
             id=id,
