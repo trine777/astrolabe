@@ -83,6 +83,42 @@ class YinglanxuanEvents:
 
         return event_dict
 
+    def emit_batch(self, events_data: List[dict]) -> List[dict]:
+        """
+        批量发射事件（单次写入）
+
+        每条 events_data 是 emit() 的参数字典:
+            {"event_type": ..., "target_type": ..., "target_id": ..., ...}
+        """
+        if not events_data:
+            return []
+
+        event_dicts = []
+        for data in events_data:
+            event = Event(
+                id=str(uuid.uuid4()),
+                timestamp=now_iso(),
+                event_type=data.get("event_type", ""),
+                target_type=data.get("target_type", ""),
+                target_id=data.get("target_id"),
+                actor_type=data.get("actor_type", "system"),
+                actor_id=data.get("actor_id"),
+                description=data.get("description"),
+                before_snapshot=data.get("before_snapshot"),
+                after_snapshot=data.get("after_snapshot"),
+            )
+            event_dicts.append(event.model_dump())
+
+        try:
+            self.store.add_events(event_dicts)
+        except Exception as e:
+            logger.error(f"批量事件记录失败: {e}")
+
+        for ed in event_dicts:
+            self._notify_subscribers(ed.get("event_type", ""), ed)
+
+        return event_dicts
+
     def get_history(
         self,
         target_id: Optional[str] = None,

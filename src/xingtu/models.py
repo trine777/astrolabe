@@ -324,6 +324,7 @@ class IngestResult(BaseModel):
     documents_added: int = 0
     documents_updated: int = 0
     documents_failed: int = 0
+    document_ids: List[str] = Field(default_factory=list, description="成功写入的文档 ID 列表")
     errors: List[str] = Field(default_factory=list)
     source: Optional[str] = None
 
@@ -338,6 +339,18 @@ class WorldModel(BaseModel):
     agent_count: int = 0
     memory_count: int = 0
     recent_events: List[dict] = Field(default_factory=list)
+
+
+class TrustVerdict(BaseModel):
+    """信任评估结果"""
+
+    item_id: str
+    item_type: str = Field(description="document | collection | unknown")
+    trust_score: float = Field(description="综合信任分 0-1")
+    confidence: float = Field(description="判定可靠度 0-1")
+    flags: List[str] = Field(default_factory=list, description="标记列表")
+    reasoning: str = Field(default="", description="判定理由")
+    dimensions: dict = Field(default_factory=dict, description="各维度分数")
 
 
 class MemoryStats(BaseModel):

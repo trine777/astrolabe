@@ -307,6 +307,14 @@ class XingkongzuoStore:
         table.add([event_dict])
         return event_dict
 
+    def add_events(self, event_dicts: list[dict]) -> int:
+        """Record multiple events in a single batch write."""
+        if not event_dicts:
+            return 0
+        table = self.get_table("events")
+        table.add(event_dicts)
+        return len(event_dicts)
+
     def get_events(
         self,
         target_id: Optional[str] = None,

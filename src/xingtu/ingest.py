@@ -109,6 +109,7 @@ class YujieshuIngest:
             collection_id=collection_id,
             documents_added=len(docs),
             documents_failed=len(errors),
+            document_ids=[d["id"] for d in docs],
             errors=errors,
         )
 
@@ -205,6 +206,7 @@ class YujieshuIngest:
             collection_id=collection_id,
             documents_added=len(docs),
             documents_failed=len(errors),
+            document_ids=[d["id"] for d in docs],
             errors=errors,
             source=str(path),
         )
@@ -296,6 +298,7 @@ class YujieshuIngest:
             collection_id=collection_id,
             documents_added=len(docs),
             documents_failed=len(errors),
+            document_ids=[d["id"] for d in docs],
             errors=errors,
             source=str(path),
         )
@@ -419,6 +422,7 @@ class YujieshuIngest:
             collection_id=collection_id,
             documents_added=len(docs),
             documents_failed=len(errors),
+            document_ids=[d["id"] for d in docs],
             errors=errors,
             source=str(path),
         )
@@ -492,6 +496,7 @@ class YujieshuIngest:
             collection_id=collection_id,
             documents_added=len(docs),
             documents_failed=len(errors),
+            document_ids=[d["id"] for d in docs],
             errors=errors,
             source=str(dir_path),
         )
@@ -530,6 +535,7 @@ class YujieshuIngest:
             return IngestResult(
                 collection_id=collection_id,
                 documents_added=1,
+                document_ids=[doc["id"]],
                 source=str(path),
             )
         elif suffix in (".txt", ".md", ".rst"):
@@ -542,11 +548,12 @@ class YujieshuIngest:
                     created_by=created_by,
                 )
             text = path.read_text(encoding="utf-8")
-            self.ingest_text(text, collection_id, source_uri=str(path), created_by=created_by)
+            doc = self.ingest_text(text, collection_id, source_uri=str(path), created_by=created_by)
             self.store.update_collection(collection_id, item_count=1)
             return IngestResult(
                 collection_id=collection_id,
                 documents_added=1,
+                document_ids=[doc["id"]],
                 source=str(path),
             )
         else:
@@ -587,6 +594,7 @@ class YujieshuIngest:
         total_added = 0
         total_failed = 0
         all_errors = []
+        all_doc_ids = []
 
         # 收集文件
         if recursive:
@@ -616,6 +624,7 @@ class YujieshuIngest:
                 total_added += result.documents_added
                 total_failed += result.documents_failed
                 all_errors.extend(result.errors)
+                all_doc_ids.extend(result.document_ids)
             except Exception as e:
                 total_failed += 1
                 all_errors.append(f"{file.name}: {e}")
@@ -626,6 +635,7 @@ class YujieshuIngest:
             collection_id=collection_id,
             documents_added=total_added,
             documents_failed=total_failed,
+            document_ids=all_doc_ids,
             errors=all_errors,
             source=str(path),
         )

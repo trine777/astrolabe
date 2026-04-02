@@ -241,8 +241,8 @@ class ChixinheSearch:
             score = r.get(score_field, 0.0)
             if score is None:
                 score = 0.0
-            if invert_score and score != 0:
-                score = 1.0 / (1.0 + score)  # Convert distance to similarity
+            if invert_score:
+                score = 1.0 / (1.0 + score)  # Convert distance to similarity (distance=0 → score=1.0)
 
             formatted.append(SearchResult(
                 id=r.get("id", ""),

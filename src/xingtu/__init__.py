@@ -49,6 +49,7 @@ from .models import (
     MemoryStats,
     Relation,
     SearchResult,
+    TrustVerdict,
     WorldModel,
     now_iso,
 )
@@ -228,13 +229,18 @@ class XingTuService:
                 self.store.update_collection(
                     collection_id, item_count=current_count + result.documents_added
                 )
-        self.events.emit(
-            event_type="created",
-            target_type="document",
-            target_id=collection_id,
-            actor_type=created_by,
-            description=f"添加 {result.documents_added} 个文档",
-        )
+        # 批量发射 ingested 事件
+        if result.document_ids:
+            self.events.emit_batch([
+                {
+                    "event_type": "created",
+                    "target_type": "document",
+                    "target_id": doc_id,
+                    "actor_type": created_by,
+                    "description": f"文档写入集合 {collection_id}",
+                }
+                for doc_id in result.document_ids
+            ])
         return result
 
     def get_document(self, document_id: str) -> Optional[dict]:
@@ -280,13 +286,18 @@ class XingTuService:
         result = self._ingest.ingest_file(
             file_path, collection_id, created_by=created_by, **kwargs
         )
-        self.events.emit(
-            event_type="created",
-            target_type="document",
-            target_id=result.collection_id,
-            actor_type=created_by,
-            description=f"导入文件: {file_path} ({result.documents_added} 个文档)",
-        )
+        # 批量发射 ingested 事件
+        if result.document_ids:
+            self.events.emit_batch([
+                {
+                    "event_type": "created",
+                    "target_type": "document",
+                    "target_id": doc_id,
+                    "actor_type": created_by,
+                    "description": f"导入文件: {file_path}",
+                }
+                for doc_id in result.document_ids
+            ])
         return result
 
     def ingest_directory(
@@ -303,13 +314,18 @@ class XingTuService:
             dir_path, collection_id, recursive=recursive,
             patterns=patterns, created_by=created_by,
         )
-        self.events.emit(
-            event_type="created",
-            target_type="document",
-            target_id=result.collection_id,
-            actor_type=created_by,
-            description=f"导入目录: {dir_path} ({result.documents_added} 个文档)",
-        )
+        # 批量发射 ingested 事件
+        if result.document_ids:
+            self.events.emit_batch([
+                {
+                    "event_type": "created",
+                    "target_type": "document",
+                    "target_id": doc_id,
+                    "actor_type": created_by,
+                    "description": f"导入目录: {dir_path}",
+                }
+                for doc_id in result.document_ids
+            ])
         return result
 
     # ===== 搜索 =====
@@ -804,6 +820,264 @@ class XingTuService:
             "dangling_count": dangling_count,
             "relations": edges,
         }
+
+    # ===== 交叉引用检测 =====
+
+    def detect_cross_references(
+        self,
+        item_id: str,
+        threshold: float = 0.85,
+        max_edges: int = 10,
+    ) -> dict:
+        """
+        检测并创建交叉引用关系
+
+        用语义相似度发现近邻文档，自动创建 similar_to 关系。
+        防护措施：去重、方向归一化、每 item 边数上限。
+
+        Args:
+            item_id: 文档 ID
+            threshold: 相似度阈值（0-1），高于此值才创建关系
+            max_edges: 每个 item 最多自动创建的边数
+
+        Returns:
+            {"created": int, "skipped_duplicate": int, "candidates": int}
+        """
+        self._ensure_initialized()
+
+        doc = self.store.get_document(item_id)
+        if not doc:
+            return {"ok": False, "error": f"Document not found: {item_id}"}
+
+        # 查找相似文档
+        similar = self._search.find_similar(
+            item_id, limit=max_edges * 2  # 多取一些，过滤后可能不够
+        )
+
+        # 获取已有的 similar_to 关系用于去重
+        existing_out = self.store.get_relations(source_id=item_id, relation_type="similar_to")
+        existing_in = self.store.get_relations(target_id=item_id, relation_type="similar_to")
+        existing_pairs = set()
+        for r in existing_out:
+            pair = tuple(sorted([r.get("source_id", ""), r.get("target_id", "")]))
+            existing_pairs.add(pair)
+        for r in existing_in:
+            pair = tuple(sorted([r.get("source_id", ""), r.get("target_id", "")]))
+            existing_pairs.add(pair)
+
+        created = 0
+        skipped = 0
+        candidates = 0
+
+        for s in similar:
+            if s.get("score", 0) < threshold:
+                continue
+            candidates += 1
+
+            other_id = s.get("id", "")
+            if not other_id or other_id == item_id:
+                continue
+
+            # 方向归一化去重
+            pair = tuple(sorted([item_id, other_id]))
+            if pair in existing_pairs:
+                skipped += 1
+                continue
+
+            if created >= max_edges:
+                break
+
+            # 归一化方向：小 ID 为 source
+            self.create_relation(
+                source_id=pair[0],
+                target_id=pair[1],
+                relation_type="similar_to",
+                description=f"语义相似度 {s.get('score', 0):.3f}",
+                confidence=s.get("score", 0),
+                is_ai_inferred=True,
+            )
+            existing_pairs.add(pair)
+            created += 1
+
+        return {
+            "ok": True,
+            "item_id": item_id,
+            "candidates": candidates,
+            "created": created,
+            "skipped_duplicate": skipped,
+        }
+
+    # ===== 信任评估 =====
+
+    def evaluate_trust(self, item_id: str) -> dict:
+        """
+        评估单个实体的信任度
+
+        五维评分：来源权威性、时效性、交叉引用密度、确认状态、审计覆盖度。
+        缺少证据的维度使用中立值 0.5，不惩罚新数据。
+
+        Returns:
+            TrustVerdict dict
+        """
+        self._ensure_initialized()
+
+        # 1. 定位实体类型
+        doc = self.store.get_document(item_id)
+        col = self.store.get_collection(item_id) if not doc else None
+
+        if not doc and not col:
+            return TrustVerdict(
+                item_id=item_id,
+                item_type="unknown",
+                trust_score=0.0,
+                confidence=0.0,
+                flags=["not_found"],
+                reasoning=f"实体 {item_id} 不存在",
+            ).model_dump()
+
+        item_type = "document" if doc else "collection"
+        item = doc or col
+        reasons = []
+        flags = []
+
+        # 2. 来源权威性 (25%)
+        source_score = 0.5  # neutral default
+        if item_type == "document":
+            if item.get("source_uri"):
+                source_score = 0.7
+                reasons.append("有来源 URI")
+            else:
+                reasons.append("无来源 URI")
+            if item.get("created_by") == "user":
+                source_score = min(source_score + 0.2, 1.0)
+                reasons.append("用户创建")
+        else:
+            # 集合：有描述和标签视为更权威
+            if item.get("description"):
+                source_score = 0.7
+            if item.get("created_by") == "user":
+                source_score = min(source_score + 0.2, 1.0)
+
+        if source_score < 0.5:
+            flags.append("unverified_source")
+
+        # 3. 时效性 (20%)
+        freshness_score = 0.5  # neutral default
+        created_at = item.get("created_at") or item.get("updated_at")
+        if created_at:
+            try:
+                from datetime import datetime, timezone
+                # 解析 ISO 时间
+                if created_at.endswith("Z"):
+                    created_at = created_at[:-1] + "+00:00"
+                dt = datetime.fromisoformat(created_at)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                age_days = max(0, (datetime.now(timezone.utc) - dt).days)
+                freshness_score = max(0.1, min(1.0, 1.0 - age_days / 365.0))
+                if age_days > 180:
+                    flags.append("stale")
+                    reasons.append(f"数据已有 {age_days} 天")
+                else:
+                    reasons.append(f"数据 {age_days} 天前创建")
+            except (ValueError, TypeError):
+                pass  # 解析失败保持中立值
+
+        # 4. 交叉引用密度 (20%)
+        rels_out = self.store.get_relations(source_id=item_id)
+        rels_in = self.store.get_relations(target_id=item_id)
+        rel_count = len(rels_out) + len(rels_in)
+        # 人工关系和 AI 推断关系分开计：AI 推断的打五折
+        human_rels = sum(1 for r in rels_out + rels_in if not r.get("is_ai_inferred", False))
+        ai_rels = rel_count - human_rels
+        effective_rels = human_rels + ai_rels * 0.5
+        xref_score = min(1.0, effective_rels / 5.0)  # 5 有效关系 = 满分
+
+        if rel_count == 0:
+            flags.append("isolated")
+            reasons.append("无交叉引用")
+        else:
+            reasons.append(f"{rel_count} 条关系 (人工 {human_rels}, AI {ai_rels})")
+
+        # 5. 确认状态 (20%)
+        events = self.events.get_history(target_id=item_id, limit=100)
+        confirmed = any(e.get("event_type") == "confirmed" for e in events)
+        if confirmed:
+            confirm_score = 1.0
+            reasons.append("已人工确认")
+        else:
+            confirm_score = 0.5  # neutral, not penalized
+            flags.append("unconfirmed")
+
+        # 6. 审计覆盖度 (15%)
+        event_count = len(events)
+        if event_count == 0:
+            audit_score = 0.5  # neutral
+            flags.append("no_audit_trail")
+            reasons.append("无审计事件")
+        else:
+            audit_score = min(1.0, event_count / 3.0)
+            reasons.append(f"{event_count} 条审计事件")
+
+        # 加权计算
+        weights = {
+            "source_authority": 0.25,
+            "freshness": 0.20,
+            "cross_reference": 0.20,
+            "confirmation": 0.20,
+            "audit_coverage": 0.15,
+        }
+        scores = {
+            "source_authority": round(source_score, 3),
+            "freshness": round(freshness_score, 3),
+            "cross_reference": round(xref_score, 3),
+            "confirmation": round(confirm_score, 3),
+            "audit_coverage": round(audit_score, 3),
+        }
+        trust_score = sum(weights[k] * scores[k] for k in weights)
+
+        # 置信度：有多少维度有真实数据（非中立默认值）
+        evidence_signals = [
+            source_score != 0.5,
+            freshness_score != 0.5,
+            rel_count > 0,
+            confirmed,  # confirmation 维度有明确信号
+            event_count > 0,
+        ]
+        confidence = sum(evidence_signals) / len(evidence_signals)
+
+        return TrustVerdict(
+            item_id=item_id,
+            item_type=item_type,
+            trust_score=round(trust_score, 3),
+            confidence=round(confidence, 3),
+            flags=flags,
+            reasoning="; ".join(reasons),
+            dimensions=scores,
+        ).model_dump()
+
+    def batch_evaluate_trust(self, item_ids: List[str]) -> List[dict]:
+        """
+        批量信任评估
+
+        逐条调用 evaluate_trust，LanceDB 本地查询无网络开销。
+        单条失败不影响其他条目。
+        """
+        self._ensure_initialized()
+        results = []
+        for item_id in item_ids:
+            try:
+                results.append(self.evaluate_trust(item_id))
+            except Exception as e:
+                results.append(TrustVerdict(
+                    item_id=item_id,
+                    item_type="unknown",
+                    trust_score=0.0,
+                    confidence=0.0,
+                    flags=["evaluation_error"],
+                    reasoning=str(e),
+                ).model_dump())
+        return results
 
     # ===== 系统 =====
 
