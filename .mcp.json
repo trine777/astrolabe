@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "xingtu": {
+      "command": "docker",
+      "args": [
+        "compose", "exec", "-T", "astrolabe",
+        "python3", "-m", "xingtu_mcp.server"
+      ],
+      "cwd": "/Users/trine/windborneos/astrolabe",
+      "env": {
+        "PYTHONPATH": "/app/src"
+      }
+    }
+  }
+}

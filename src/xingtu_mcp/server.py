@@ -35,6 +35,16 @@ def get_service() -> XingTuService:
     return _service
 
 
+def _json(obj: Any) -> str:
+    """统一 JSON 序列化"""
+    return json.dumps(obj, ensure_ascii=False, default=str)
+
+
+def _clean(d: dict) -> dict:
+    """清理 LanceDB 内部字段"""
+    return {k: v for k, v in d.items() if not k.startswith("_")}
+
+
 # ===== 集合管理工具 =====
 
 
@@ -45,7 +55,7 @@ def xingtu_create_collection(
     collection_type: str = "documents",
     tags: Optional[list[str]] = None,
 ) -> str:
-    """创建数据集合。
+    """创建数据集合（同名幂等，返回已有集合）。
 
     Args:
         name: 集合名称
@@ -61,7 +71,7 @@ def xingtu_create_collection(
         tags=tags,
         created_by="ai",
     )
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(result)
 
 
 @mcp.tool()
@@ -77,8 +87,7 @@ def xingtu_list_collections(
     """
     service = get_service()
     results = service.list_collections(status=status, collection_type=collection_type)
-    cleaned = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+    return _json([_clean(r) for r in results])
 
 
 @mcp.tool()
@@ -91,9 +100,8 @@ def xingtu_get_collection(collection_id: str) -> str:
     service = get_service()
     result = service.get_collection(collection_id)
     if result is None:
-        return json.dumps({"error": f"Collection {collection_id} not found"})
-    cleaned = {k: v for k, v in result.items() if not k.startswith("_")}
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+        return _json({"error": f"Collection {collection_id} not found"})
+    return _json(_clean(result))
 
 
 @mcp.tool()
@@ -125,9 +133,8 @@ def xingtu_update_collection(
         kwargs["tags"] = tags
     result = service.update_collection(collection_id, **kwargs)
     if result is None:
-        return json.dumps({"error": f"Collection {collection_id} not found"})
-    cleaned = {k: v for k, v in result.items() if not k.startswith("_")}
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+        return _json({"error": f"Collection {collection_id} not found"})
+    return _json(_clean(result))
 
 
 @mcp.tool()
@@ -139,7 +146,7 @@ def xingtu_delete_collection(collection_id: str) -> str:
     """
     service = get_service()
     service.delete_collection(collection_id)
-    return json.dumps({"status": "deleted", "collection_id": collection_id})
+    return _json({"status": "deleted", "collection_id": collection_id})
 
 
 # ===== 文档操作工具 =====
@@ -158,7 +165,7 @@ def xingtu_add_documents(
     """
     service = get_service()
     result = service.add_documents(collection_id, texts, created_by="ai")
-    return json.dumps(result.model_dump(), ensure_ascii=False, default=str)
+    return _json(result.model_dump())
 
 
 @mcp.tool()
@@ -171,9 +178,9 @@ def xingtu_get_document(document_id: str) -> str:
     service = get_service()
     result = service.get_document(document_id)
     if result is None:
-        return json.dumps({"error": f"Document {document_id} not found"})
+        return _json({"error": f"Document {document_id} not found"})
     cleaned = {k: v for k, v in result.items() if not k.startswith("_") and k != "vector"}
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+    return _json(cleaned)
 
 
 @mcp.tool()
@@ -201,9 +208,9 @@ def xingtu_update_document(
         kwargs["metadata_json"] = metadata_json
     result = service.update_document(document_id, **kwargs)
     if result is None:
-        return json.dumps({"error": f"Document {document_id} not found"})
+        return _json({"error": f"Document {document_id} not found"})
     cleaned = {k: v for k, v in result.items() if not k.startswith("_") and k != "vector"}
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+    return _json(cleaned)
 
 
 @mcp.tool()
@@ -220,12 +227,12 @@ def xingtu_delete_documents(
     service = get_service()
     if document_id:
         service.delete_documents(f"id = '{document_id}'")
-        return json.dumps({"status": "deleted", "document_id": document_id})
+        return _json({"status": "deleted", "document_id": document_id})
     elif collection_id:
         service.delete_documents(f"collection_id = '{collection_id}'")
-        return json.dumps({"status": "deleted", "collection_id": collection_id})
+        return _json({"status": "deleted", "collection_id": collection_id})
     else:
-        return json.dumps({"error": "Must specify collection_id or document_id"})
+        return _json({"error": "Must specify collection_id or document_id"})
 
 
 @mcp.tool()
@@ -241,7 +248,7 @@ def xingtu_ingest_file(
     """
     service = get_service()
     result = service.ingest_file(file_path, collection_id, created_by="ai")
-    return json.dumps(result.model_dump(), ensure_ascii=False, default=str)
+    return _json(result.model_dump())
 
 
 # ===== 搜索工具 =====
@@ -262,7 +269,7 @@ def xingtu_vector_search(
     """
     service = get_service()
     results = service.search(query, search_type="vector", collection_id=collection_id, limit=limit)
-    return json.dumps(results, ensure_ascii=False, default=str)
+    return _json(results)
 
 
 @mcp.tool()
@@ -280,7 +287,7 @@ def xingtu_text_search(
     """
     service = get_service()
     results = service.search(query, search_type="text", collection_id=collection_id, limit=limit)
-    return json.dumps(results, ensure_ascii=False, default=str)
+    return _json(results)
 
 
 @mcp.tool()
@@ -303,7 +310,7 @@ def xingtu_hybrid_search(
         query, search_type="hybrid", collection_id=collection_id,
         limit=limit, reranker=reranker,
     )
-    return json.dumps(results, ensure_ascii=False, default=str)
+    return _json(results)
 
 
 @mcp.tool()
@@ -321,32 +328,7 @@ def xingtu_find_similar(
     """
     service = get_service()
     results = service.find_similar(document_id, limit=limit, collection_id=collection_id)
-    return json.dumps(results, ensure_ascii=False, default=str)
-
-
-@mcp.tool()
-def xingtu_multimodal_search(
-    query: str,
-    query_type: str = "text",
-    target_type: Optional[str] = None,
-    collection_id: Optional[str] = None,
-    limit: int = 10,
-) -> str:
-    """多模态搜索 - 支持文搜图、图搜文等跨模态检索。
-
-    Args:
-        query: 搜索查询（文本或图片路径）
-        query_type: 查询类型 (text 或 image)
-        target_type: 目标内容类型 (text, image, audio 等)
-        collection_id: 限定搜索的集合 ID
-        limit: 返回结果数量
-    """
-    service = get_service()
-    results = service.search(
-        query, search_type="multimodal", collection_id=collection_id,
-        limit=limit, query_type=query_type, target_type=target_type,
-    )
-    return json.dumps(results, ensure_ascii=False, default=str)
+    return _json(results)
 
 
 # ===== 关系工具 =====
@@ -378,8 +360,7 @@ def xingtu_create_relation(
         confidence=confidence,
         is_ai_inferred=True,
     )
-    cleaned = {k: v for k, v in result.items() if not k.startswith("_")}
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+    return _json(_clean(result))
 
 
 @mcp.tool()
@@ -399,8 +380,7 @@ def xingtu_get_relations(
     results = service.get_relations(
         source_id=source_id, target_id=target_id, relation_type=relation_type,
     )
-    cleaned = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+    return _json([_clean(r) for r in results])
 
 
 @mcp.tool()
@@ -412,7 +392,7 @@ def xingtu_delete_relation(relation_id: str) -> str:
     """
     service = get_service()
     service.delete_relation(relation_id)
-    return json.dumps({"status": "deleted", "relation_id": relation_id})
+    return _json({"status": "deleted", "relation_id": relation_id})
 
 
 # ===== Agent 记忆工具 =====
@@ -444,7 +424,7 @@ def xingtu_store_memory(
         tags=tags,
     )
     cleaned = {k: v for k, v in result.items() if not k.startswith("_") and k != "vector"}
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+    return _json(cleaned)
 
 
 @mcp.tool()
@@ -466,7 +446,7 @@ def xingtu_recall_memories(
     results = service.recall_memories(
         agent_id=agent_id, query=query, memory_type=memory_type, limit=limit,
     )
-    return json.dumps(results, ensure_ascii=False, default=str)
+    return _json(results)
 
 
 @mcp.tool()
@@ -482,7 +462,7 @@ def xingtu_forget_memories(
     """
     service = get_service()
     service.forget_memories(agent_id=agent_id, memory_type=memory_type)
-    return json.dumps({
+    return _json({
         "status": "forgotten",
         "agent_id": agent_id,
         "memory_type": memory_type or "all",
@@ -498,7 +478,133 @@ def xingtu_get_memory_stats(agent_id: str) -> str:
     """
     service = get_service()
     result = service.get_memory_stats(agent_id)
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(result)
+
+
+# ===== 分层投影工具 =====
+
+
+@mcp.tool()
+def xingtu_projection_l0(limit: int = 20, offset: int = 0) -> str:
+    """L0 位面索引 — 系统全局概览。
+
+    返回所有集合（位面）的索引，适合冷启动了解系统全貌。
+    Token 开销约 ~400。
+
+    Args:
+        limit: 最多返回多少位面（默认 20）
+        offset: 跳过前 N 个
+    """
+    service = get_service()
+    return _json(service.projection_l0(limit=limit, offset=offset))
+
+
+@mcp.tool()
+def xingtu_projection_l1(
+    collection_id: str,
+    limit: int = 30,
+    offset: int = 0,
+) -> str:
+    """L1 位面概览 — 单个位面的元信息 + 实体列表。
+
+    Token 开销约 ~500。
+
+    Args:
+        collection_id: 集合 ID
+        limit: 最多返回多少实体（默认 30）
+        offset: 跳过前 N 个
+    """
+    service = get_service()
+    return _json(service.projection_l1(collection_id, limit=limit, offset=offset))
+
+
+@mcp.tool()
+def xingtu_projection_l2(document_id: str) -> str:
+    """L2 实体详情 — 单个实体的完整信息和元数据。
+
+    Token 开销约 ~200。
+
+    Args:
+        document_id: 文档 ID
+    """
+    service = get_service()
+    return _json(service.projection_l2(document_id))
+
+
+@mcp.tool()
+def xingtu_projection_l3(
+    source_id: Optional[str] = None,
+    target_id: Optional[str] = None,
+    relation_type: Optional[str] = None,
+    limit: int = 50,
+) -> str:
+    """L3 关系图 — 实体/位面间的关系网络。
+
+    支持悬空关系检测。Token 开销约 ~300。
+
+    Args:
+        source_id: 按源过滤
+        target_id: 按目标过滤
+        relation_type: 按关系类型过滤
+        limit: 最多返回多少条
+    """
+    service = get_service()
+    return _json(service.projection_l3(
+        source_id=source_id, target_id=target_id,
+        relation_type=relation_type, limit=limit,
+    ))
+
+
+# ===== 信任评估工具 =====
+
+
+@mcp.tool()
+def xingtu_evaluate_trust(item_id: str) -> str:
+    """评估单个实体的信任度。
+
+    五维加权评分：来源权威性(25%)、时效性(20%)、交叉引用密度(20%)、确认状态(20%)、审计覆盖(15%)。
+    缺少证据的维度使用中立值 0.5，不惩罚新数据。
+
+    Args:
+        item_id: 文档或集合 ID
+    """
+    service = get_service()
+    return _json(service.evaluate_trust(item_id))
+
+
+@mcp.tool()
+def xingtu_batch_evaluate_trust(item_ids: list[str]) -> str:
+    """批量信任评估。
+
+    逐条评估，单条失败不影响其他条目。
+
+    Args:
+        item_ids: 文档/集合 ID 列表
+    """
+    service = get_service()
+    return _json(service.batch_evaluate_trust(item_ids))
+
+
+@mcp.tool()
+def xingtu_detect_cross_references(
+    item_id: str,
+    threshold: float = 0.85,
+    max_edges: int = 10,
+) -> str:
+    """检测并创建交叉引用关系。
+
+    用语义相似度发现近邻文档，自动创建 similar_to 关系。
+    内置去重、方向归一化、边数上限防护。
+
+    Args:
+        item_id: 文档 ID
+        threshold: 相似度阈值 0-1（默认 0.85）
+        max_edges: 每 item 最多创建的边数（默认 10）
+    """
+    service = get_service()
+    return _json(service.detect_cross_references(
+        item_id, threshold=threshold, max_edges=max_edges,
+    ))
 
 
 # ===== 系统工具 =====
@@ -506,10 +612,10 @@ def xingtu_get_memory_stats(agent_id: str) -> str:
 
 @mcp.tool()
 def xingtu_get_world_model() -> str:
-    """获取星图世界模型 - 包含所有集合、文档统计、关系和最近事件的完整视图。"""
+    """获取星图世界模型 — 包含所有集合、文档统计、关系和最近事件的完整视图。
+    注意：大规模数据下请用 projection_l0-l3 逐层钻入。"""
     service = get_service()
-    result = service.get_world_model()
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(service.get_world_model())
 
 
 @mcp.tool()
@@ -518,24 +624,30 @@ def xingtu_get_events(
     event_type: Optional[str] = None,
     limit: int = 50,
 ) -> str:
-    """查询事件历史。
+    """查询事件历史（审计轨迹）。
 
     Args:
         target_id: 按目标 ID 过滤
-        event_type: 按事件类型过滤 (created, updated, deleted, searched, inferred)
+        event_type: 按事件类型过滤 (created, updated, deleted, searched, inferred, confirmed)
         limit: 返回数量
     """
     service = get_service()
     results = service.get_events(target_id=target_id, event_type=event_type, limit=limit)
-    return json.dumps(results, ensure_ascii=False, default=str)
+    return _json(results)
+
+
+@mcp.tool()
+def xingtu_get_stats() -> str:
+    """获取星图系统统计 — 各表行数。"""
+    service = get_service()
+    return _json(service.get_stats())
 
 
 @mcp.tool()
 def xingtu_optimize() -> str:
-    """优化星图数据库 - 压缩文件、清理旧版本。"""
+    """优化星图数据库 — 压缩文件、清理旧版本。"""
     service = get_service()
-    result = service.optimize()
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(service.optimize())
 
 
 # ===== 小世界模型 - 意图驱动工具 =====
@@ -547,41 +659,22 @@ def xingtu_intent(
     user_id: str = "ai",
     auto_execute: bool = True,
 ) -> str:
-    """处理人类意图 - 小世界模型的核心入口。
+    """处理人类意图 — 小世界模型核心入口。
 
-    这是星图的主权智能体模式：
-    1. 接收自然语言意图
-    2. AI 自动理解并生成预期宇宙状态
-    3. 计算差分 (Δ = Expected - Actual)
-    4. 自动执行行技完成目标
-
-    示例意图：
-    - "导入这个 CSV 文件并分析数据结构"
-    - "创建一个客户数据集合"
-    - "找出销售数据和客户数据的关联关系"
-    - "把这些文档按主题分类"
+    流程: 自然语言 → 结构化目标 → 差分计算 → 自动执行。
 
     Args:
         intent_text: 用户的自然语言意图
         user_id: 用户标识
-        auto_execute: 是否自动执行生成的行动计划（默认 True）
-
-    Returns:
-        包含目标、差分列表和执行结果的 JSON
+        auto_execute: 是否自动执行（默认 True）
     """
     service = get_service()
-
-    # 调用小世界模型处理意图
-    import asyncio
-    result = asyncio.run(
-        service.universe.process_intent(
-            intent_text=intent_text,
-            user_id=user_id,
-            auto_execute=auto_execute,
-        )
+    result = service.universe.process_intent(
+        intent_text=intent_text,
+        user_id=user_id,
+        auto_execute=auto_execute,
     )
-
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(result)
 
 
 @mcp.tool()
@@ -590,14 +683,9 @@ def xingtu_get_goal_status(goal_id: str) -> str:
 
     Args:
         goal_id: 目标 ID
-
-    Returns:
-        目标状态、差分列表、执行进度
     """
     service = get_service()
-    import asyncio
-    result = asyncio.run(service.universe.get_goal_status(goal_id))
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(service.universe.get_goal_status(goal_id))
 
 
 @mcp.tool()
@@ -606,32 +694,23 @@ def xingtu_execute_delta(delta_id: str) -> str:
 
     Args:
         delta_id: 差分 ID
-
-    Returns:
-        执行结果
     """
     service = get_service()
-    import asyncio
-    result = asyncio.run(service.universe.execute_delta(delta_id))
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(service.universe.execute_delta(delta_id))
 
 
 @mcp.tool()
 def xingtu_list_pending_goals() -> str:
     """列出所有待处理的目标。"""
     service = get_service()
-    import asyncio
-    results = asyncio.run(service.universe.list_pending_goals())
-    return json.dumps(results, ensure_ascii=False, default=str)
+    return _json(service.universe.list_pending_goals())
 
 
 @mcp.tool()
 def xingtu_list_pending_deltas() -> str:
     """列出所有待执行的差分。"""
     service = get_service()
-    import asyncio
-    results = asyncio.run(service.universe.list_pending_deltas())
-    return json.dumps(results, ensure_ascii=False, default=str)
+    return _json(service.universe.list_pending_deltas())
 
 
 # ===== MCP 资源 =====
@@ -641,8 +720,7 @@ def xingtu_list_pending_deltas() -> str:
 def resource_world_model() -> str:
     """星图世界模型 - 完整数据视图"""
     service = get_service()
-    result = service.get_world_model()
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(service.get_world_model())
 
 
 @mcp.resource("xingtu://collections")
@@ -650,16 +728,14 @@ def resource_collections() -> str:
     """星图集合列表"""
     service = get_service()
     results = service.list_collections()
-    cleaned = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
-    return json.dumps(cleaned, ensure_ascii=False, default=str)
+    return _json([_clean(r) for r in results])
 
 
 @mcp.resource("xingtu://stats")
 def resource_stats() -> str:
     """星图系统统计"""
     service = get_service()
-    result = service.get_stats()
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return _json(service.get_stats())
 
 
 # ===== 入口点 =====
