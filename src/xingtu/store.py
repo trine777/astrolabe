@@ -199,11 +199,21 @@ class XingkongzuoStore:
     def add_documents(self, docs: list[dict]) -> int:
         """Add documents (as dicts with all Document fields including vector).
 
+        Uses upsert semantics for custom IDs: deletes existing docs with
+        matching IDs before adding, preventing phantom duplicates.
         Returns count of documents added.
         """
         if not docs:
             return 0
         table = self.get_table("documents")
+        # Upsert: remove existing docs with same IDs to prevent duplicates
+        existing_ids = [d["id"] for d in docs if d.get("id")]
+        if existing_ids:
+            escaped = ", ".join(f"'{_esc(i)}'" for i in existing_ids)
+            try:
+                table.delete(f"id IN ({escaped})")
+            except Exception:
+                pass  # Table might be empty or IDs don't exist yet
         table.add(docs)
         return len(docs)
 
@@ -218,24 +228,61 @@ class XingkongzuoStore:
         )
         return results[0] if results else None
 
-    def get_documents_batch(self, ids: list[str]) -> list[dict]:
+    def get_documents_batch(self, ids: list[str], max_batch: int = 1000) -> list[dict]:
         """Retrieve multiple documents by ID list.
 
-        Efficient batch fetch — uses OR filter instead of N individual queries.
-        Returns found documents (missing IDs silently skipped).
+        Efficient batch fetch — uses IN clause instead of N individual queries.
+        Auto-deduplicates IDs; silently skips missing IDs.
+        Caps at max_batch (default 1000) per call to prevent SQL parser overload.
+        For larger sets, the caller should chunk.
         """
         if not ids:
             return []
+        # Deduplicate and filter empty strings, preserving order
+        seen = set()
+        clean_ids = []
+        for i in ids:
+            if i and i not in seen:
+                seen.add(i)
+                clean_ids.append(i)
+        if not clean_ids:
+            return []
+        if len(clean_ids) > max_batch:
+            logger.warning(
+                "get_documents_batch: %d IDs exceeds max %d, truncating",
+                len(clean_ids), max_batch,
+            )
+            clean_ids = clean_ids[:max_batch]
+
         table = self.get_table("documents")
-        # LanceDB SQL WHERE with IN clause
-        escaped = ", ".join(f"'{_esc(i)}'" for i in ids)
+        escaped = ", ".join(f"'{_esc(i)}'" for i in clean_ids)
         results = (
             table.search()
             .where(f"id IN ({escaped})", prefilter=True)
-            .limit(len(ids))
+            .limit(len(clean_ids))
             .to_list()
         )
         return results
+
+    @staticmethod
+    def _normalize_iso(ts: str) -> Optional[str]:
+        """Normalize a timestamp string to full ISO 8601 format.
+
+        Handles: '2026-04-03', '2026-04-03T12:00:00Z', '2026-04-03T12:00:00+00:00'.
+        Returns None if unparseable.
+        """
+        from datetime import datetime, timezone
+
+        try:
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.isoformat()
+        except (ValueError, TypeError):
+            logger.warning("_normalize_iso: cannot parse '%s'", ts)
+            return None
 
     def query_documents(
         self,
@@ -270,45 +317,76 @@ class XingkongzuoStore:
             conditions.append(f"content_type = '{_esc(content_type)}'")
         if created_by:
             conditions.append(f"created_by = '{_esc(created_by)}'")
+        # Normalize time range to full ISO format for correct string comparison
         if created_after:
-            conditions.append(f"created_at >= '{_esc(created_after)}'")
+            created_after = self._normalize_iso(created_after)
+            if created_after:
+                conditions.append(f"created_at >= '{_esc(created_after)}'")
         if created_before:
-            conditions.append(f"created_at <= '{_esc(created_before)}'")
+            created_before = self._normalize_iso(created_before)
+            if created_before:
+                conditions.append(f"created_at <= '{_esc(created_before)}'")
 
-        query = table.search()
-        if conditions:
-            query = query.where(" AND ".join(conditions), prefilter=True)
-
-        # Fetch extra to handle post-filters (tags, metadata)
+        where_clause = " AND ".join(conditions) if conditions else None
         need_post_filter = bool(tags_filter or metadata_filter)
-        fetch_limit = (limit + offset) * 3 if need_post_filter else limit + offset
-        results = query.limit(fetch_limit).to_list()
 
-        # Post-filter: tags (LanceDB list columns don't support SQL IN well)
-        if tags_filter:
-            results = [
-                r for r in results
-                if all(tag in (r.get("tags") or []) for tag in tags_filter)
-            ]
+        if not need_post_filter:
+            # No post-filter: single SQL query is sufficient
+            query = table.search()
+            if where_clause:
+                query = query.where(where_clause, prefilter=True)
+            return query.limit(limit + offset).to_list()[offset:]
 
-        # Post-filter: metadata_json key-value matching
-        if metadata_filter:
-            import json as _json
-            filtered = []
-            for r in results:
-                raw = r.get("metadata_json")
-                if not raw:
-                    continue
-                try:
-                    meta = _json.loads(raw) if isinstance(raw, str) else raw
-                except (ValueError, TypeError):
-                    continue
-                if all(meta.get(k) == v for k, v in metadata_filter.items()):
-                    filtered.append(r)
-            results = filtered
+        # Post-filter path: fetch in batches until we have enough results
+        # or exhaust the table. Prevents the 3x heuristic from silently
+        # returning fewer results than requested.
+        import json as _json
 
-        # Apply offset + limit
-        return results[offset:offset + limit]
+        target = limit + offset
+        batch_size = max(target * 3, 300)  # initial batch
+        max_fetch = 10000  # safety cap to avoid runaway fetches
+        fetched_total = 0
+        collected: list[dict] = []
+
+        while len(collected) < target and fetched_total < max_fetch:
+            query = table.search()
+            if where_clause:
+                query = query.where(where_clause, prefilter=True)
+            # LanceDB doesn't support OFFSET natively, so we fetch progressively
+            batch = query.limit(fetched_total + batch_size).to_list()
+            # Only process new rows (beyond what we already processed)
+            new_rows = batch[fetched_total:]
+            if not new_rows:
+                break  # Table exhausted
+
+            for r in new_rows:
+                # Tag filter
+                if tags_filter:
+                    if not all(tag in (r.get("tags") or []) for tag in tags_filter):
+                        continue
+                # Metadata filter
+                if metadata_filter:
+                    raw = r.get("metadata_json")
+                    if not raw:
+                        continue
+                    try:
+                        meta = _json.loads(raw) if isinstance(raw, str) else raw
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            "query_documents: bad metadata_json in doc %s",
+                            r.get("id", "?"),
+                        )
+                        continue
+                    if not all(meta.get(k) == v for k, v in metadata_filter.items()):
+                        continue
+                collected.append(r)
+
+            fetched_total += len(new_rows)
+            if len(new_rows) < batch_size:
+                break  # No more rows in table
+            batch_size = min(batch_size * 2, max_fetch - fetched_total)
+
+        return collected[offset:offset + limit]
 
     def list_documents(
         self,

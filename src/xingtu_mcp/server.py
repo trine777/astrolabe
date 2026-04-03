@@ -243,6 +243,8 @@ def xingtu_query_documents(
             meta_dict = json.loads(metadata_filter)
         except (ValueError, TypeError):
             return _json({"error": f"Invalid metadata_filter JSON: {metadata_filter}"})
+        if not isinstance(meta_dict, dict):
+            return _json({"error": "metadata_filter must be a JSON object, not array or scalar"})
 
     results = service.query_documents(
         collection_id=collection_id,
@@ -303,12 +305,14 @@ def xingtu_delete_documents(
         collection_id: 按集合 ID 删除所有文档
         document_id: 按文档 ID 删除单个文档
     """
+    from xingtu.store import _esc
+
     service = get_service()
     if document_id:
-        service.delete_documents(f"id = '{document_id}'")
+        service.delete_documents(f"id = '{_esc(document_id)}'")
         return _json({"status": "deleted", "document_id": document_id})
     elif collection_id:
-        service.delete_documents(f"collection_id = '{collection_id}'")
+        service.delete_documents(f"collection_id = '{_esc(collection_id)}'")
         return _json({"status": "deleted", "collection_id": collection_id})
     else:
         return _json({"error": "Must specify collection_id or document_id"})
