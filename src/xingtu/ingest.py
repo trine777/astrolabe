@@ -49,13 +49,18 @@ class YujieshuIngest:
         tags: Optional[List[str]] = None,
         metadata_json: Optional[str] = None,
         created_by: str = "system",
+        document_id: Optional[str] = None,
     ) -> dict:
-        """导入单个文本"""
+        """导入单个文本
+
+        Args:
+            document_id: 自定义文档 ID（如 ki-xxx）。不传则自动生成 UUID。
+        """
         vector = self.embedding_manager.embed_text(text)
         now = now_iso()
 
         doc = {
-            "id": str(uuid.uuid4()),
+            "id": document_id or str(uuid.uuid4()),
             "collection_id": collection_id,
             "content": text,
             "vector": vector,
@@ -76,8 +81,15 @@ class YujieshuIngest:
         texts: List[str],
         collection_id: str,
         created_by: str = "system",
+        document_ids: Optional[List[str]] = None,
     ) -> IngestResult:
-        """批量导入文本"""
+        """批量导入文本
+
+        Args:
+            document_ids: 自定义文档 ID 列表（与 texts 一一对应）。
+                          不传或为 None 则全部自动生成 UUID。
+                          列表中的 None 元素也会自动生成 UUID。
+        """
         vectors = self.embedding_manager.embed_texts(texts)
         now = now_iso()
         docs = []
@@ -85,8 +97,9 @@ class YujieshuIngest:
 
         for i, (text, vector) in enumerate(zip(texts, vectors)):
             try:
+                custom_id = document_ids[i] if document_ids and i < len(document_ids) else None
                 doc = {
-                    "id": str(uuid.uuid4()),
+                    "id": custom_id or str(uuid.uuid4()),
                     "collection_id": collection_id,
                     "content": text,
                     "vector": vector,

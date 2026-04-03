@@ -156,15 +156,22 @@ def xingtu_delete_collection(collection_id: str) -> str:
 def xingtu_add_documents(
     collection_id: str,
     texts: list[str],
+    document_ids: Optional[list[str]] = None,
 ) -> str:
     """向集合添加文档（自动生成嵌入向量）。
+
+    支持自定义 ID：传入 document_ids 与 texts 一一对应，玄武可用 ki-xxx 作为共享键。
+    不传则自动生成 UUID。
 
     Args:
         collection_id: 目标集合 ID
         texts: 文本内容列表
+        document_ids: 自定义文档 ID 列表（可选，与 texts 一一对应）
     """
     service = get_service()
-    result = service.add_documents(collection_id, texts, created_by="ai")
+    result = service.add_documents(
+        collection_id, texts, created_by="ai", document_ids=document_ids,
+    )
     return _json(result.model_dump())
 
 
@@ -180,6 +187,78 @@ def xingtu_get_document(document_id: str) -> str:
     if result is None:
         return _json({"error": f"Document {document_id} not found"})
     cleaned = {k: v for k, v in result.items() if not k.startswith("_") and k != "vector"}
+    return _json(cleaned)
+
+
+@mcp.tool()
+def xingtu_batch_get_documents(document_ids: list[str]) -> str:
+    """批量获取文档 — 按 ID 列表一次性拉回元数据。
+
+    高效替代逐条 get_document，适合玄武按 ID 批量拉取元数据。
+    缺失的 ID 静默跳过。
+
+    Args:
+        document_ids: 文档 ID 列表
+    """
+    service = get_service()
+    results = service.batch_get_documents(document_ids)
+    cleaned = [
+        {k: v for k, v in r.items() if not k.startswith("_") and k != "vector"}
+        for r in results
+    ]
+    return _json(cleaned)
+
+
+@mcp.tool()
+def xingtu_query_documents(
+    collection_id: Optional[str] = None,
+    tags: Optional[list[str]] = None,
+    metadata_filter: Optional[str] = None,
+    content_type: Optional[str] = None,
+    created_by: Optional[str] = None,
+    created_after: Optional[str] = None,
+    created_before: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> str:
+    """结构化过滤查询文档 — 按 tag、metadata、时间范围等条件过滤。
+
+    替代 text_search 用于结构化元数据查询。例如查找所有 domain=ai_research 的文档。
+
+    Args:
+        collection_id: 按集合 ID 过滤
+        tags: 文档必须包含所有指定标签
+        metadata_filter: metadata_json 匹配条件（JSON 字符串，如 '{"domain":"ai_research"}'）
+        content_type: 按内容类型过滤 (text, image, structured, ...)
+        created_by: 按创建者过滤 (user, ai, system)
+        created_after: 创建时间下限（ISO 格式）
+        created_before: 创建时间上限（ISO 格式）
+        limit: 返回数量（默认 100）
+        offset: 跳过前 N 条（分页用）
+    """
+    service = get_service()
+    meta_dict = None
+    if metadata_filter:
+        try:
+            meta_dict = json.loads(metadata_filter)
+        except (ValueError, TypeError):
+            return _json({"error": f"Invalid metadata_filter JSON: {metadata_filter}"})
+
+    results = service.query_documents(
+        collection_id=collection_id,
+        tags_filter=tags,
+        metadata_filter=meta_dict,
+        created_after=created_after,
+        created_before=created_before,
+        content_type=content_type,
+        created_by=created_by,
+        limit=limit,
+        offset=offset,
+    )
+    cleaned = [
+        {k: v for k, v in r.items() if not k.startswith("_") and k != "vector"}
+        for r in results
+    ]
     return _json(cleaned)
 
 

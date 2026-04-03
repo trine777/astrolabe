@@ -217,10 +217,18 @@ class XingTuService:
         collection_id: str,
         texts: List[str],
         created_by: str = "system",
+        document_ids: Optional[List[str]] = None,
     ) -> IngestResult:
-        """添加文档（自动嵌入）"""
+        """添加文档（自动嵌入）
+
+        Args:
+            document_ids: 自定义文档 ID 列表（与 texts 一一对应）。
+                          不传则自动生成 UUID。玄武用 ki-xxx 作为共享键。
+        """
         self._ensure_initialized()
-        result = self._ingest.ingest_texts(texts, collection_id, created_by=created_by)
+        result = self._ingest.ingest_texts(
+            texts, collection_id, created_by=created_by, document_ids=document_ids,
+        )
         if result.documents_added > 0:
             # 更新集合的 item_count
             col = self.store.get_collection(collection_id)
@@ -247,6 +255,56 @@ class XingTuService:
         """获取文档"""
         self._ensure_initialized()
         return self.store.get_document(document_id)
+
+    def batch_get_documents(self, document_ids: List[str]) -> List[dict]:
+        """批量获取文档（按 ID 列表）
+
+        高效批量查询，一次 LanceDB IN 查询替代 N 次单条查询。
+        缺失的 ID 静默跳过，返回找到的文档。
+        """
+        self._ensure_initialized()
+        return self.store.get_documents_batch(document_ids)
+
+    def query_documents(
+        self,
+        collection_id: Optional[str] = None,
+        tags_filter: Optional[List[str]] = None,
+        metadata_filter: Optional[dict] = None,
+        created_after: Optional[str] = None,
+        created_before: Optional[str] = None,
+        content_type: Optional[str] = None,
+        created_by: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[dict]:
+        """结构化过滤查询文档
+
+        支持按 tag、metadata 字段值、时间范围、内容类型过滤。
+        玄武用此接口按 domain/content_type 等元数据查询文档 ID 列表。
+
+        Args:
+            collection_id: 按集合过滤
+            tags_filter: 文档必须包含所有指定标签
+            metadata_filter: metadata_json 中的 key=value 匹配
+            created_after: 创建时间下限（ISO 格式）
+            created_before: 创建时间上限（ISO 格式）
+            content_type: 按内容类型过滤
+            created_by: 按创建者过滤
+            limit: 返回数量
+            offset: 跳过前 N 条
+        """
+        self._ensure_initialized()
+        return self.store.query_documents(
+            collection_id=collection_id,
+            tags_filter=tags_filter,
+            metadata_filter=metadata_filter,
+            created_after=created_after,
+            created_before=created_before,
+            content_type=content_type,
+            created_by=created_by,
+            limit=limit,
+            offset=offset,
+        )
 
     def update_document(self, document_id: str, **kwargs) -> Optional[dict]:
         """更新文档"""

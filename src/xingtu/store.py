@@ -218,6 +218,98 @@ class XingkongzuoStore:
         )
         return results[0] if results else None
 
+    def get_documents_batch(self, ids: list[str]) -> list[dict]:
+        """Retrieve multiple documents by ID list.
+
+        Efficient batch fetch — uses OR filter instead of N individual queries.
+        Returns found documents (missing IDs silently skipped).
+        """
+        if not ids:
+            return []
+        table = self.get_table("documents")
+        # LanceDB SQL WHERE with IN clause
+        escaped = ", ".join(f"'{_esc(i)}'" for i in ids)
+        results = (
+            table.search()
+            .where(f"id IN ({escaped})", prefilter=True)
+            .limit(len(ids))
+            .to_list()
+        )
+        return results
+
+    def query_documents(
+        self,
+        collection_id: Optional[str] = None,
+        tags_filter: Optional[list[str]] = None,
+        metadata_filter: Optional[dict] = None,
+        created_after: Optional[str] = None,
+        created_before: Optional[str] = None,
+        content_type: Optional[str] = None,
+        created_by: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Query documents with structured filters.
+
+        Supports filtering by:
+        - collection_id: exact match
+        - tags_filter: documents containing ALL specified tags
+        - metadata_filter: key-value pairs matched against metadata_json
+        - created_after/created_before: time range (ISO format)
+        - content_type: exact match
+        - created_by: exact match
+
+        Returns list of matching documents.
+        """
+        table = self.get_table("documents")
+        conditions: list[str] = []
+
+        if collection_id:
+            conditions.append(f"collection_id = '{_esc(collection_id)}'")
+        if content_type:
+            conditions.append(f"content_type = '{_esc(content_type)}'")
+        if created_by:
+            conditions.append(f"created_by = '{_esc(created_by)}'")
+        if created_after:
+            conditions.append(f"created_at >= '{_esc(created_after)}'")
+        if created_before:
+            conditions.append(f"created_at <= '{_esc(created_before)}'")
+
+        query = table.search()
+        if conditions:
+            query = query.where(" AND ".join(conditions), prefilter=True)
+
+        # Fetch extra to handle post-filters (tags, metadata)
+        need_post_filter = bool(tags_filter or metadata_filter)
+        fetch_limit = (limit + offset) * 3 if need_post_filter else limit + offset
+        results = query.limit(fetch_limit).to_list()
+
+        # Post-filter: tags (LanceDB list columns don't support SQL IN well)
+        if tags_filter:
+            results = [
+                r for r in results
+                if all(tag in (r.get("tags") or []) for tag in tags_filter)
+            ]
+
+        # Post-filter: metadata_json key-value matching
+        if metadata_filter:
+            import json as _json
+            filtered = []
+            for r in results:
+                raw = r.get("metadata_json")
+                if not raw:
+                    continue
+                try:
+                    meta = _json.loads(raw) if isinstance(raw, str) else raw
+                except (ValueError, TypeError):
+                    continue
+                if all(meta.get(k) == v for k, v in metadata_filter.items()):
+                    filtered.append(r)
+            results = filtered
+
+        # Apply offset + limit
+        return results[offset:offset + limit]
+
     def list_documents(
         self,
         collection_id: Optional[str] = None,
