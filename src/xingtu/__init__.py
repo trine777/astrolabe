@@ -37,6 +37,7 @@ from typing import List, Optional
 from .config import XingTuConfig
 from .embeddings import EmbeddingManager
 from .events import YinglanxuanEvents
+from .metrics import FormulaError, MetricCalculator
 from .models import (
     AgentMemory,
     Collection,
@@ -47,6 +48,9 @@ from .models import (
     Event,
     IngestResult,
     MemoryStats,
+    MetricCalculationResult,
+    MetricKind,
+    MetricStatus,
     Relation,
     SearchResult,
     TrustVerdict,
@@ -86,6 +90,9 @@ class XingTuService:
         # 小世界模型（意图驱动）
         self.universe: Optional[UniverseModel] = None
 
+        # 指标计算引擎
+        self._calculator: Optional[MetricCalculator] = None
+
     def initialize(self) -> None:
         """初始化所有组件"""
         if self._initialized:
@@ -108,6 +115,9 @@ class XingTuService:
 
         self._search = ChixinheSearch(self.store, self.embedding_manager)
         self._ingest = YujieshuIngest(self.store, self.embedding_manager)
+
+        # 指标计算引擎
+        self._calculator = MetricCalculator(self.store)
 
         # 初始化小世界模型
         from .intent import IntentTranslator
@@ -149,6 +159,7 @@ class XingTuService:
         tags: Optional[List[str]] = None,
         created_by: str = "system",
         metadata_json: Optional[str] = None,
+        tenant_id: str = "default",
     ) -> dict:
         """创建数据集合"""
         self._ensure_initialized()
@@ -161,6 +172,7 @@ class XingTuService:
             tags=tags,
             created_by=created_by,
             metadata_json=metadata_json,
+            tenant_id=tenant_id,
         )
         self.events.emit(
             event_type="created",
@@ -180,10 +192,13 @@ class XingTuService:
         self,
         status: Optional[str] = None,
         collection_type: Optional[str] = None,
+        tenant_id: str = "default",
     ) -> List[dict]:
         """列出集合"""
         self._ensure_initialized()
-        return self.store.list_collections(status=status, collection_type=collection_type)
+        return self.store.list_collections(
+            status=status, collection_type=collection_type, tenant_id=tenant_id,
+        )
 
     def update_collection(self, collection_id: str, **kwargs) -> Optional[dict]:
         """更新集合"""
@@ -218,12 +233,14 @@ class XingTuService:
         texts: List[str],
         created_by: str = "system",
         document_ids: Optional[List[str]] = None,
+        tenant_id: str = "default",
     ) -> IngestResult:
         """添加文档（自动嵌入）
 
         Args:
             document_ids: 自定义文档 ID 列表（与 texts 一一对应）。
                           不传则自动生成 UUID。玄武用 ki-xxx 作为共享键。
+            tenant_id: 租户 ID / Area ID
         """
         self._ensure_initialized()
         result = self._ingest.ingest_texts(
@@ -353,6 +370,63 @@ class XingTuService:
                     "target_id": doc_id,
                     "actor_type": created_by,
                     "description": f"导入文件: {file_path}",
+                }
+                for doc_id in result.document_ids
+            ])
+        return result
+
+    def ingest_excel(
+        self,
+        file_path: str,
+        collection_id: Optional[str] = None,
+        sheet_name: Optional[str] = None,
+        text_columns: Optional[List[str]] = None,
+        created_by: str = "system",
+    ) -> IngestResult:
+        """导入 Excel 文件（.xlsx / .xls）"""
+        self._ensure_initialized()
+        result = self._ingest.ingest_excel(
+            file_path, collection_id,
+            sheet_name=sheet_name, text_columns=text_columns,
+            created_by=created_by,
+        )
+        if result.document_ids:
+            self.events.emit_batch([
+                {
+                    "event_type": "created",
+                    "target_type": "document",
+                    "target_id": doc_id,
+                    "actor_type": created_by,
+                    "description": f"导入 Excel: {file_path}",
+                }
+                for doc_id in result.document_ids
+            ])
+        return result
+
+    def ingest_database(
+        self,
+        connection_string: str,
+        query: str,
+        collection_id: Optional[str] = None,
+        collection_name: Optional[str] = None,
+        text_columns: Optional[List[str]] = None,
+        created_by: str = "system",
+    ) -> IngestResult:
+        """从数据库导入查询结果"""
+        self._ensure_initialized()
+        result = self._ingest.ingest_database(
+            connection_string, query, collection_id,
+            collection_name=collection_name,
+            text_columns=text_columns, created_by=created_by,
+        )
+        if result.document_ids:
+            self.events.emit_batch([
+                {
+                    "event_type": "created",
+                    "target_type": "document",
+                    "target_id": doc_id,
+                    "actor_type": created_by,
+                    "description": f"导入数据库: {connection_string}",
                 }
                 for doc_id in result.document_ids
             ])
@@ -1171,3 +1245,161 @@ class XingTuService:
         """获取系统统计"""
         self._ensure_initialized()
         return self.store.table_stats()
+
+    # ===== 指标管理 =====
+
+    def create_metric(
+        self,
+        name: str,
+        formula: dict,
+        kind: str = "scalar",
+        description: Optional[str] = None,
+        unit: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        metadata_json: Optional[str] = None,
+        created_by: str = "system",
+        tenant_id: str = "default",
+    ) -> dict:
+        """创建指标（name 幂等）。formula 是 JSON DSL。"""
+        self._ensure_initialized()
+        # Dry-run structural validation — raises FormulaError
+        self._calculator.validate(formula)
+
+        import json as _json
+        metric_id = str(uuid.uuid4())
+        result = self.store.create_metric(
+            id=metric_id,
+            name=name,
+            formula_json=_json.dumps(formula, ensure_ascii=False),
+            kind=kind,
+            description=description,
+            unit=unit,
+            tags=tags,
+            metadata_json=metadata_json,
+            created_by=created_by,
+            tenant_id=tenant_id,
+        )
+        # Only emit if newly created (idempotent returned existing → id matches returned id)
+        if result.get("id") == metric_id:
+            self.events.emit(
+                event_type="created",
+                target_type="metric",
+                target_id=metric_id,
+                description=f"创建指标 {name}",
+                actor_type="ai" if created_by == "ai" else "system",
+            )
+        return result
+
+    def get_metric(self, metric_id: str) -> Optional[dict]:
+        self._ensure_initialized()
+        return self.store.get_metric(metric_id)
+
+    def list_metrics(
+        self,
+        status: Optional[str] = None,
+        tenant_id: str = "default",
+    ) -> List[dict]:
+        self._ensure_initialized()
+        return self.store.list_metrics(status=status, tenant_id=tenant_id)
+
+    def update_metric(self, metric_id: str, **kwargs) -> Optional[dict]:
+        """Update metric fields. If formula provided (dict), validate + serialize."""
+        self._ensure_initialized()
+        if "formula" in kwargs:
+            formula = kwargs.pop("formula")
+            self._calculator.validate(formula)
+            import json as _json
+            kwargs["formula_json"] = _json.dumps(formula, ensure_ascii=False)
+
+        result = self.store.update_metric(metric_id, **kwargs)
+        if result:
+            self.events.emit(
+                event_type="updated",
+                target_type="metric",
+                target_id=metric_id,
+                description=f"更新指标 {metric_id}",
+            )
+        return result
+
+    def delete_metric(self, metric_id: str) -> bool:
+        self._ensure_initialized()
+        deleted = self.store.delete_metric(metric_id)
+        if deleted:
+            self.events.emit(
+                event_type="deleted",
+                target_type="metric",
+                target_id=metric_id,
+                description=f"删除指标 {metric_id}",
+            )
+        return deleted
+
+    def calculate_metric(
+        self,
+        metric_id: str,
+        persist: bool = True,
+        tenant_id: str = "default",
+    ) -> dict:
+        """立即计算指标。返回 {metric, result}。"""
+        self._ensure_initialized()
+        metric = self.store.get_metric(metric_id)
+        if not metric:
+            raise ValueError(f"metric not found: {metric_id}")
+
+        import json as _json
+        formula = _json.loads(metric["formula_json"])
+        calc_result = self._calculator.calculate(
+            formula, tenant_id=tenant_id, metric_id=metric_id
+        )
+
+        result_dict = {
+            "id": str(uuid.uuid4()),
+            "metric_id": metric_id,
+            "value_numeric": calc_result.value_numeric,
+            "value_json": calc_result.value_json,
+            "sample_count": calc_result.sample_count,
+            "formula_snapshot": metric["formula_json"],
+            "duration_ms": calc_result.duration_ms,
+            "error": calc_result.error,
+        }
+
+        if persist:
+            self.store.save_metric_result(result_dict, tenant_id=tenant_id)
+            self.events.emit(
+                event_type="inferred",
+                target_type="metric",
+                target_id=metric_id,
+                description=f"计算指标 {metric['name']} = {calc_result.value_numeric}",
+            )
+
+        return {"metric": metric, "result": result_dict}
+
+    def calculate_metrics_batch(
+        self,
+        metric_ids: List[str],
+        persist: bool = True,
+        tenant_id: str = "default",
+    ) -> List[dict]:
+        """批量计算。单个失败不影响其他，失败项的 result.error 非空。"""
+        self._ensure_initialized()
+        results = []
+        for mid in metric_ids:
+            try:
+                results.append(self.calculate_metric(mid, persist=persist, tenant_id=tenant_id))
+            except Exception as e:
+                results.append({
+                    "metric": {"id": mid},
+                    "result": {"error": f"{type(e).__name__}: {e}"},
+                })
+        return results
+
+    def get_metric_history(
+        self,
+        metric_id: str,
+        limit: int = 100,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+    ) -> List[dict]:
+        self._ensure_initialized()
+        return self.store.get_metric_results(
+            metric_id, limit=limit, since=since, until=until
+        )

@@ -113,6 +113,22 @@ class DeltaType(str, Enum):
     infer_metadata = "infer_metadata"  # 推断元数据
 
 
+class MetricStatus(str, Enum):
+    """指标状态"""
+
+    active = "active"
+    paused = "paused"
+    archived = "archived"
+
+
+class MetricKind(str, Enum):
+    """指标类型"""
+
+    scalar = "scalar"  # 单值（count/sum/avg）
+    ratio = "ratio"  # 比率（0-1 或百分比）
+    distribution = "distribution"  # 分布（按维度分组的 count/sum）
+
+
 # ===== 辅助函数 =====
 
 
@@ -132,6 +148,7 @@ class Collection(LanceModel):
     """
 
     id: str = Field(description="集合唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     name: str = Field(description="集合名称")
     description: Optional[str] = Field(default=None, description="集合描述")
     collection_type: str = Field(
@@ -155,6 +172,7 @@ class Document(LanceModel):
     """
 
     id: str = Field(description="文档唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     collection_id: str = Field(description="所属集合 ID")
     content: str = Field(description="文本内容/描述")
     vector: Vector(1536) = Field(description="文本嵌入向量")  # type: ignore[valid-type]
@@ -175,6 +193,7 @@ class Relation(LanceModel):
     """
 
     id: str = Field(description="关系唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     source_id: str = Field(description="源文档/集合 ID")
     target_id: str = Field(description="目标文档/集合 ID")
     relation_type: str = Field(
@@ -196,6 +215,7 @@ class Event(LanceModel):
     """
 
     id: str = Field(description="事件唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     timestamp: str = Field(default_factory=now_iso, description="事件时间戳")
     event_type: str = Field(description="事件类型")
     target_type: str = Field(description="目标类型: collection | document | relation")
@@ -215,6 +235,7 @@ class AgentMemory(LanceModel):
     """
 
     id: str = Field(description="记忆唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     agent_id: str = Field(description="Agent ID")
     memory_type: str = Field(
         default=MemoryType.semantic.value, description="记忆类型"
@@ -239,6 +260,7 @@ class UniverseGoal(LanceModel):
     """
 
     id: str = Field(description="目标唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     intent_text: str = Field(description="原始意图文本")
     intent_vector: Vector(1536) = Field(description="意图嵌入向量")  # type: ignore[valid-type]
     status: str = Field(default=GoalStatus.pending.value, description="目标状态")
@@ -273,6 +295,7 @@ class UniverseDelta(LanceModel):
     """
 
     id: str = Field(description="差分唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     goal_id: str = Field(description="关联的目标 ID")
     delta_type: str = Field(description="差分类型")
 
@@ -298,6 +321,48 @@ class UniverseDelta(LanceModel):
     # 时间
     created_at: str = Field(default_factory=now_iso, description="创建时间")
     executed_at: Optional[str] = Field(default=None, description="执行时间")
+    metadata_json: Optional[str] = Field(default=None, description="扩展元数据 JSON")
+
+
+class Metric(LanceModel):
+    """
+    指标定义 - 可计算的口径声明
+
+    对应 LanceDB 表: metrics
+    """
+
+    id: str = Field(description="指标唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
+    name: str = Field(description="指标名称（同租户内唯一）")
+    description: Optional[str] = Field(default=None, description="业务描述")
+    kind: str = Field(default=MetricKind.scalar.value, description="指标类型")
+    formula_json: str = Field(description="Formula DSL JSON 字符串")
+    unit: Optional[str] = Field(default=None, description="单位（count/%/items/day 等）")
+    status: str = Field(default=MetricStatus.active.value, description="状态")
+    tags: List[str] = Field(default_factory=list, description="标签列表")
+    created_at: str = Field(default_factory=now_iso, description="创建时间")
+    updated_at: str = Field(default_factory=now_iso, description="更新时间")
+    created_by: str = Field(default="system", description="创建者类型")
+    metadata_json: Optional[str] = Field(default=None, description="扩展元数据 JSON")
+
+
+class MetricResult(LanceModel):
+    """
+    指标计算结果 - 时间序列快照
+
+    对应 LanceDB 表: metric_results
+    """
+
+    id: str = Field(description="结果唯一标识")
+    tenant_id: str = Field(default="default", description="租户 ID / Area ID")
+    metric_id: str = Field(description="关联指标 ID")
+    computed_at: str = Field(default_factory=now_iso, description="计算时间")
+    value_numeric: float = Field(default=0.0, description="数值（scalar/ratio）")
+    value_json: Optional[str] = Field(default=None, description="复杂值 JSON（distribution）")
+    sample_count: int = Field(default=0, description="参与计算的样本数")
+    formula_snapshot: str = Field(description="计算时的 formula 快照 JSON")
+    duration_ms: int = Field(default=0, description="计算耗时毫秒")
+    error: Optional[str] = Field(default=None, description="失败原因")
     metadata_json: Optional[str] = Field(default=None, description="扩展元数据 JSON")
 
 
@@ -362,3 +427,15 @@ class MemoryStats(BaseModel):
     avg_importance: float = 0.0
     oldest_memory: Optional[str] = None
     newest_memory: Optional[str] = None
+
+
+class MetricCalculationResult(BaseModel):
+    """Calculator 返回的计算结果（未持久化）"""
+
+    metric_id: str
+    kind: str = Field(default=MetricKind.scalar.value)
+    value_numeric: float = 0.0
+    value_json: Optional[str] = None
+    sample_count: int = 0
+    duration_ms: int = 0
+    error: Optional[str] = None

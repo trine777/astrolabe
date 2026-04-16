@@ -20,6 +20,8 @@ from .models import (
     Collection,
     Document,
     Event,
+    Metric,
+    MetricResult,
     Relation,
     UniverseDelta,
     UniverseGoal,
@@ -68,6 +70,8 @@ class XingkongzuoStore:
             "agent_memories": AgentMemory,
             "universe_goals": UniverseGoal,
             "universe_deltas": UniverseDelta,
+            "metrics": Metric,
+            "metric_results": MetricResult,
         }
         for name, model in table_schemas.items():
             try:
@@ -89,12 +93,17 @@ class XingkongzuoStore:
     # Collection CRUD
     # ------------------------------------------------------------------
 
-    def get_collection_by_name(self, name: str) -> Optional[dict]:
-        """Find a collection by name. Returns first match or None."""
+    def get_collection_by_name(
+        self, name: str, tenant_id: str = "default"
+    ) -> Optional[dict]:
+        """Find a collection by name within a tenant. Returns first match or None."""
         table = self.get_table("collections")
         results = (
             table.search()
-            .where(f"name = '{_esc(name)}'", prefilter=True)
+            .where(
+                f"name = '{_esc(name)}' AND tenant_id = '{_esc(tenant_id)}'",
+                prefilter=True,
+            )
             .limit(1)
             .to_list()
         )
@@ -109,16 +118,18 @@ class XingkongzuoStore:
         tags: Optional[list[str]] = None,
         created_by: str = "system",
         metadata_json: Optional[str] = None,
+        tenant_id: str = "default",
     ) -> dict:
         """Create a new collection. Returns existing if same name exists (idempotent)."""
-        # 幂等：同名集合直接返回已有的
-        existing = self.get_collection_by_name(name)
+        # 幂等：同名同租户集合直接返回已有的
+        existing = self.get_collection_by_name(name, tenant_id=tenant_id)
         if existing:
             return {k: v for k, v in existing.items() if not k.startswith("_")}
 
         now = now_iso()
         collection = Collection(
             id=id,
+            tenant_id=tenant_id,
             name=name,
             description=description,
             collection_type=collection_type,
@@ -149,17 +160,17 @@ class XingkongzuoStore:
         self,
         status: Optional[str] = None,
         collection_type: Optional[str] = None,
+        tenant_id: str = "default",
     ) -> list[dict]:
         """List collections with optional filters."""
         table = self.get_table("collections")
         query = table.search()
-        conditions: list[str] = []
+        conditions: list[str] = [f"tenant_id = '{_esc(tenant_id)}'"]
         if status:
             conditions.append(f"status = '{_esc(status)}'")
         if collection_type:
             conditions.append(f"collection_type = '{_esc(collection_type)}'")
-        if conditions:
-            query = query.where(" AND ".join(conditions), prefilter=True)
+        query = query.where(" AND ".join(conditions), prefilter=True)
         return query.limit(1000).to_list()
 
     def update_collection(self, id: str, **kwargs) -> Optional[dict]:
@@ -196,7 +207,7 @@ class XingkongzuoStore:
     # Document CRUD
     # ------------------------------------------------------------------
 
-    def add_documents(self, docs: list[dict]) -> int:
+    def add_documents(self, docs: list[dict], tenant_id: str = "default") -> int:
         """Add documents (as dicts with all Document fields including vector).
 
         Uses upsert semantics for custom IDs: deletes existing docs with
@@ -205,6 +216,9 @@ class XingkongzuoStore:
         """
         if not docs:
             return 0
+        # Inject tenant_id if not present in each doc
+        for d in docs:
+            d.setdefault("tenant_id", tenant_id)
         table = self.get_table("documents")
         # Upsert: remove existing docs with same IDs to prevent duplicates
         existing_ids = [d["id"] for d in docs if d.get("id")]
@@ -392,14 +406,18 @@ class XingkongzuoStore:
         self,
         collection_id: Optional[str] = None,
         limit: int = 100,
+        tenant_id: Optional[str] = None,
     ) -> list[dict]:
         """List documents with optional collection filter."""
         table = self.get_table("documents")
         query = table.search()
+        conditions: list[str] = []
+        if tenant_id:
+            conditions.append(f"tenant_id = '{_esc(tenant_id)}'")
         if collection_id:
-            query = query.where(
-                f"collection_id = '{_esc(collection_id)}'", prefilter=True
-            )
+            conditions.append(f"collection_id = '{_esc(collection_id)}'")
+        if conditions:
+            query = query.where(" AND ".join(conditions), prefilter=True)
         return query.limit(limit).to_list()
 
     def update_document(self, id: str, **kwargs) -> Optional[dict]:
@@ -437,11 +455,13 @@ class XingkongzuoStore:
         confidence: float = 1.0,
         is_ai_inferred: bool = False,
         metadata_json: Optional[str] = None,
+        tenant_id: str = "default",
     ) -> dict:
         """Create a new relation between two entities."""
         now = now_iso()
         relation = Relation(
             id=id,
+            tenant_id=tenant_id,
             source_id=source_id,
             target_id=target_id,
             relation_type=relation_type,
@@ -462,10 +482,13 @@ class XingkongzuoStore:
         source_id: Optional[str] = None,
         target_id: Optional[str] = None,
         relation_type: Optional[str] = None,
+        tenant_id: Optional[str] = None,
     ) -> list[dict]:
         """Query relations with optional filters."""
         table = self.get_table("relations")
         conditions: list[str] = []
+        if tenant_id:
+            conditions.append(f"tenant_id = '{_esc(tenant_id)}'")
         if source_id:
             conditions.append(f"source_id = '{_esc(source_id)}'")
         if target_id:
@@ -487,16 +510,19 @@ class XingkongzuoStore:
     # Event operations
     # ------------------------------------------------------------------
 
-    def add_event(self, event_dict: dict) -> dict:
+    def add_event(self, event_dict: dict, tenant_id: str = "default") -> dict:
         """Record an event to the audit log."""
+        event_dict.setdefault("tenant_id", tenant_id)
         table = self.get_table("events")
         table.add([event_dict])
         return event_dict
 
-    def add_events(self, event_dicts: list[dict]) -> int:
+    def add_events(self, event_dicts: list[dict], tenant_id: str = "default") -> int:
         """Record multiple events in a single batch write."""
         if not event_dicts:
             return 0
+        for e in event_dicts:
+            e.setdefault("tenant_id", tenant_id)
         table = self.get_table("events")
         table.add(event_dicts)
         return len(event_dicts)
@@ -506,10 +532,13 @@ class XingkongzuoStore:
         target_id: Optional[str] = None,
         event_type: Optional[str] = None,
         limit: int = 50,
+        tenant_id: Optional[str] = None,
     ) -> list[dict]:
         """Query events with optional filters."""
         table = self.get_table("events")
         conditions: list[str] = []
+        if tenant_id:
+            conditions.append(f"tenant_id = '{_esc(tenant_id)}'")
         if target_id:
             conditions.append(f"target_id = '{_esc(target_id)}'")
         if event_type:
@@ -523,8 +552,9 @@ class XingkongzuoStore:
     # Agent Memory
     # ------------------------------------------------------------------
 
-    def store_memory(self, memory_dict: dict) -> dict:
+    def store_memory(self, memory_dict: dict, tenant_id: str = "default") -> dict:
         """Store an agent memory entry."""
+        memory_dict.setdefault("tenant_id", tenant_id)
         table = self.get_table("agent_memories")
         table.add([memory_dict])
         return memory_dict
@@ -591,9 +621,9 @@ class XingkongzuoStore:
     # World Model
     # ------------------------------------------------------------------
 
-    def get_world_model(self) -> dict:
+    def get_world_model(self, tenant_id: str = "default") -> dict:
         """Get complete world model view with aggregate statistics."""
-        collections = self.list_collections()
+        collections = self.list_collections(tenant_id=tenant_id)
 
         # Count documents
         try:
@@ -662,6 +692,8 @@ class XingkongzuoStore:
             "agent_memories",
             "universe_goals",
             "universe_deltas",
+            "metrics",
+            "metric_results",
         ]:
             try:
                 table = self.get_table(name)
@@ -674,8 +706,9 @@ class XingkongzuoStore:
     # Universe Goal operations
     # ------------------------------------------------------------------
 
-    def save_goal(self, goal_dict: dict) -> dict:
+    def save_goal(self, goal_dict: dict, tenant_id: str = "default") -> dict:
         """Save a universe goal."""
+        goal_dict.setdefault("tenant_id", tenant_id)
         table = self.get_table("universe_goals")
         table.add([goal_dict])
         return goal_dict
@@ -728,10 +761,12 @@ class XingkongzuoStore:
         table.add([delta_dict])
         return delta_dict
 
-    def save_deltas(self, delta_dicts: list[dict]) -> int:
+    def save_deltas(self, delta_dicts: list[dict], tenant_id: str = "default") -> int:
         """Save multiple deltas. Returns count saved."""
         if not delta_dicts:
             return 0
+        for d in delta_dicts:
+            d.setdefault("tenant_id", tenant_id)
         table = self.get_table("universe_deltas")
         table.add(delta_dicts)
         return len(delta_dicts)
@@ -778,3 +813,179 @@ class XingkongzuoStore:
                 del existing[key]
         table.add([existing])
         return existing
+
+    # ------------------------------------------------------------------
+    # Metric operations
+    # ------------------------------------------------------------------
+
+    def get_metric_by_name(
+        self, name: str, tenant_id: str = "default"
+    ) -> Optional[dict]:
+        """Find a metric by name within a tenant. Returns first match or None."""
+        table = self.get_table("metrics")
+        results = (
+            table.search()
+            .where(
+                f"name = '{_esc(name)}' AND tenant_id = '{_esc(tenant_id)}'",
+                prefilter=True,
+            )
+            .limit(1)
+            .to_list()
+        )
+        return results[0] if results else None
+
+    def create_metric(
+        self,
+        id: str,
+        name: str,
+        formula_json: str,
+        kind: str = "scalar",
+        description: Optional[str] = None,
+        unit: Optional[str] = None,
+        status: str = "active",
+        tags: Optional[list[str]] = None,
+        created_by: str = "system",
+        metadata_json: Optional[str] = None,
+        tenant_id: str = "default",
+    ) -> dict:
+        """Create a metric. Idempotent by name+tenant (returns existing)."""
+        existing = self.get_metric_by_name(name, tenant_id=tenant_id)
+        if existing:
+            return {k: v for k, v in existing.items() if not k.startswith("_")}
+
+        now = now_iso()
+        metric = Metric(
+            id=id,
+            tenant_id=tenant_id,
+            name=name,
+            description=description,
+            kind=kind,
+            formula_json=formula_json,
+            unit=unit,
+            status=status,
+            tags=tags or [],
+            created_at=now,
+            updated_at=now,
+            created_by=created_by,
+            metadata_json=metadata_json,
+        )
+        table = self.get_table("metrics")
+        table.add([metric.model_dump()])
+        return metric.model_dump()
+
+    def get_metric(self, id: str) -> Optional[dict]:
+        """Retrieve a single metric by ID."""
+        table = self.get_table("metrics")
+        results = (
+            table.search()
+            .where(f"id = '{_esc(id)}'", prefilter=True)
+            .limit(1)
+            .to_list()
+        )
+        return results[0] if results else None
+
+    def list_metrics(
+        self,
+        status: Optional[str] = None,
+        tenant_id: str = "default",
+        limit: int = 1000,
+    ) -> list[dict]:
+        """List metrics with optional status filter."""
+        table = self.get_table("metrics")
+        conditions = [f"tenant_id = '{_esc(tenant_id)}'"]
+        if status:
+            conditions.append(f"status = '{_esc(status)}'")
+        query = table.search().where(" AND ".join(conditions), prefilter=True)
+        return query.limit(limit).to_list()
+
+    def update_metric(self, id: str, **kwargs) -> Optional[dict]:
+        """Update metric fields using delete-then-add pattern."""
+        existing = self.get_metric(id)
+        if not existing:
+            return None
+        table = self.get_table("metrics")
+        table.delete(f"id = '{_esc(id)}'")
+        existing.update(kwargs)
+        existing["updated_at"] = now_iso()
+        for key in list(existing.keys()):
+            if key.startswith("_"):
+                del existing[key]
+        table.add([existing])
+        return existing
+
+    def delete_metric(self, id: str) -> bool:
+        """Delete metric and all its results."""
+        if not self.get_metric(id):
+            return False
+        self.get_table("metrics").delete(f"id = '{_esc(id)}'")
+        # Cascade: remove all results of this metric
+        try:
+            self.get_table("metric_results").delete(f"metric_id = '{_esc(id)}'")
+        except Exception:
+            pass
+        return True
+
+    # ------------------------------------------------------------------
+    # Metric result operations (time series)
+    # ------------------------------------------------------------------
+
+    def _fill_metric_result_defaults(self, r: dict, tenant_id: str) -> dict:
+        """Ensure MetricResult dict has all required schema fields."""
+        r.setdefault("tenant_id", tenant_id)
+        r.setdefault("computed_at", now_iso())
+        r.setdefault("value_numeric", 0.0)
+        r.setdefault("value_json", None)
+        r.setdefault("sample_count", 0)
+        r.setdefault("duration_ms", 0)
+        r.setdefault("error", None)
+        r.setdefault("metadata_json", None)
+        return r
+
+    def save_metric_result(
+        self, result_dict: dict, tenant_id: str = "default"
+    ) -> dict:
+        """Persist a single metric calculation result."""
+        self._fill_metric_result_defaults(result_dict, tenant_id)
+        table = self.get_table("metric_results")
+        table.add([result_dict])
+        return result_dict
+
+    def save_metric_results(
+        self, result_dicts: list[dict], tenant_id: str = "default"
+    ) -> int:
+        """Batch persist metric results. Returns count saved."""
+        if not result_dicts:
+            return 0
+        for r in result_dicts:
+            self._fill_metric_result_defaults(r, tenant_id)
+        table = self.get_table("metric_results")
+        table.add(result_dicts)
+        return len(result_dicts)
+
+    def get_metric_results(
+        self,
+        metric_id: str,
+        limit: int = 100,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+    ) -> list[dict]:
+        """Get historical results for a metric, newest first."""
+        table = self.get_table("metric_results")
+        conditions = [f"metric_id = '{_esc(metric_id)}'"]
+        if since:
+            conditions.append(f"computed_at >= '{_esc(since)}'")
+        if until:
+            conditions.append(f"computed_at <= '{_esc(until)}'")
+        results = (
+            table.search()
+            .where(" AND ".join(conditions), prefilter=True)
+            .limit(limit)
+            .to_list()
+        )
+        results.sort(key=lambda r: r.get("computed_at", ""), reverse=True)
+        return results
+
+    def get_latest_metric_result(self, metric_id: str) -> Optional[dict]:
+        """Get the most recent result for a metric."""
+        results = self.get_metric_results(metric_id, limit=1)
+        return results[0] if results else None
