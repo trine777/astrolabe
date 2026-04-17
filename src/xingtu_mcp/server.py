@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -23,6 +24,9 @@ mcp = FastMCP("xingtu")
 
 # 全局服务实例（延迟初始化）
 _service: Optional[XingTuService] = None
+
+# MCP stdio 模式：进程级绑定 tenant（由 Matrix area_mcps.config.env 注入）
+_TENANT_ID = os.environ.get("XINGTU_TENANT_ID", "default")
 
 
 def get_service() -> XingTuService:
@@ -70,6 +74,7 @@ def xingtu_create_collection(
         collection_type=collection_type,
         tags=tags,
         created_by="ai",
+        tenant_id=_TENANT_ID,
     )
     return _json(result)
 
@@ -86,7 +91,9 @@ def xingtu_list_collections(
         collection_type: 按类型过滤
     """
     service = get_service()
-    results = service.list_collections(status=status, collection_type=collection_type)
+    results = service.list_collections(
+        status=status, collection_type=collection_type, tenant_id=_TENANT_ID,
+    )
     return _json([_clean(r) for r in results])
 
 
@@ -323,7 +330,7 @@ def xingtu_ingest_file(
     file_path: str,
     collection_id: Optional[str] = None,
 ) -> str:
-    """导入文件到星图（支持 CSV、JSON、PDF、TXT、图片）。
+    """导入文件到星图（支持 CSV、Excel、JSON、PDF、TXT、图片）。
 
     Args:
         file_path: 文件路径
@@ -331,6 +338,67 @@ def xingtu_ingest_file(
     """
     service = get_service()
     result = service.ingest_file(file_path, collection_id, created_by="ai")
+    return _json(result.model_dump())
+
+
+@mcp.tool()
+def xingtu_ingest_excel(
+    file_path: str,
+    collection_id: Optional[str] = None,
+    sheet_name: Optional[str] = None,
+    text_columns: Optional[list[str]] = None,
+) -> str:
+    """导入 Excel 文件（.xlsx / .xls）到星图。
+
+    每行生成一个文档，整行数据保留在 metadata_json。
+    需要 openpyxl: pip install 'xingtu[excel]'
+
+    Args:
+        file_path: Excel 文件路径
+        collection_id: 目标集合 ID（不指定则自动创建）
+        sheet_name: 工作表名称（默认读取第一个）
+        text_columns: 用于生成文本内容的列名列表（不指定则使用所有列）
+    """
+    service = get_service()
+    result = service.ingest_excel(
+        file_path, collection_id,
+        sheet_name=sheet_name, text_columns=text_columns,
+        created_by="ai",
+    )
+    return _json(result.model_dump())
+
+
+@mcp.tool()
+def xingtu_ingest_database(
+    connection_string: str,
+    query: str,
+    collection_id: Optional[str] = None,
+    collection_name: Optional[str] = None,
+    text_columns: Optional[list[str]] = None,
+) -> str:
+    """从数据库导入查询结果到星图。
+
+    执行 SQL 查询，每行结果生成一个文档。支持 SQLite（内置）和
+    SQLAlchemy 支持的所有数据库（PostgreSQL、MySQL 等）。
+
+    连接字符串格式：
+    - SQLite: "sqlite:///path/to/db.sqlite" 或直接传 .db/.sqlite 路径
+    - PostgreSQL: "postgresql://user:pass@host:5432/dbname"
+    - MySQL: "mysql://user:pass@host:3306/dbname"
+
+    Args:
+        connection_string: 数据库连接字符串
+        query: SQL 查询语句（SELECT）
+        collection_id: 目标集合 ID（不指定则自动创建）
+        collection_name: 集合名称（仅在自动创建时使用）
+        text_columns: 用于生成文本内容的列名列表（不指定则使用所有列）
+    """
+    service = get_service()
+    result = service.ingest_database(
+        connection_string, query, collection_id,
+        collection_name=collection_name,
+        text_columns=text_columns, created_by="ai",
+    )
     return _json(result.model_dump())
 
 
@@ -794,6 +862,167 @@ def xingtu_list_pending_deltas() -> str:
     """列出所有待执行的差分。"""
     service = get_service()
     return _json(service.universe.list_pending_deltas())
+
+
+# ===== 指标管理工具 =====
+
+
+@mcp.tool()
+def xingtu_create_metric(
+    name: str,
+    formula: dict,
+    kind: str = "scalar",
+    description: str = "",
+    unit: str = "",
+    tags: Optional[list[str]] = None,
+) -> str:
+    """创建指标定义（name 同租户幂等）。
+
+    formula 是 JSON DSL：
+      {"op":"count", "source":"<col_id_or_name>", "filter":{...}}
+      {"op":"count_distinct", "source":"...", "field":"metadata.category"}
+      {"op":"sum"|"avg", "source":"...", "field":"metadata.amount"}
+      {"op":"ratio", "numerator":<formula>, "denominator":<formula>}
+      {"op":"distribution", "source":"...", "group_by":"tags", "top_k":20}
+
+    Args:
+        name: 指标名称
+        formula: JSON DSL 公式
+        kind: scalar | ratio | distribution
+        description: 业务描述
+        unit: 单位（count/%/items 等）
+        tags: 标签列表
+    """
+    service = get_service()
+    try:
+        result = service.create_metric(
+            name=name,
+            formula=formula,
+            kind=kind,
+            description=description or None,
+            unit=unit or None,
+            tags=tags,
+            created_by="ai",
+            tenant_id=_TENANT_ID,
+        )
+        return _json(_clean(result))
+    except Exception as e:
+        return _json({"error": "formula_invalid" if "Formula" in type(e).__name__ else "error",
+                       "detail": str(e)})
+
+
+@mcp.tool()
+def xingtu_get_metric(metric_id: str) -> str:
+    """获取指标定义。"""
+    service = get_service()
+    result = service.get_metric(metric_id)
+    if not result:
+        return _json({"error": "not_found", "metric_id": metric_id})
+    return _json(_clean(result))
+
+
+@mcp.tool()
+def xingtu_list_metrics(status: Optional[str] = None) -> str:
+    """列出指标。可按状态过滤（active/paused/archived）。"""
+    service = get_service()
+    results = service.list_metrics(status=status, tenant_id=_TENANT_ID)
+    return _json([_clean(r) for r in results])
+
+
+@mcp.tool()
+def xingtu_update_metric(
+    metric_id: str,
+    name: Optional[str] = None,
+    formula: Optional[dict] = None,
+    status: Optional[str] = None,
+    description: Optional[str] = None,
+    unit: Optional[str] = None,
+) -> str:
+    """更新指标。formula 会做 dry-run 校验。"""
+    service = get_service()
+    updates: dict = {}
+    if name is not None:
+        updates["name"] = name
+    if formula is not None:
+        updates["formula"] = formula
+    if status is not None:
+        updates["status"] = status
+    if description is not None:
+        updates["description"] = description
+    if unit is not None:
+        updates["unit"] = unit
+    try:
+        result = service.update_metric(metric_id, **updates)
+    except Exception as e:
+        return _json({"error": "formula_invalid", "detail": str(e)})
+    if not result:
+        return _json({"error": "not_found"})
+    return _json(_clean(result))
+
+
+@mcp.tool()
+def xingtu_delete_metric(metric_id: str) -> str:
+    """删除指标（连带清理所有历史结果）。"""
+    service = get_service()
+    deleted = service.delete_metric(metric_id)
+    return _json({"deleted": deleted, "metric_id": metric_id})
+
+
+@mcp.tool()
+def xingtu_calculate_metric(metric_id: str, persist: bool = True) -> str:
+    """立即计算指标值并持久化。返回 {metric, result}。"""
+    service = get_service()
+    try:
+        result = service.calculate_metric(
+            metric_id, persist=persist, tenant_id=_TENANT_ID
+        )
+        return _json({
+            "metric": _clean(result["metric"]),
+            "result": result["result"],
+        })
+    except Exception as e:
+        return _json({"error": str(e), "metric_id": metric_id})
+
+
+@mcp.tool()
+def xingtu_calculate_metrics_batch(
+    metric_ids: list[str], persist: bool = True
+) -> str:
+    """批量计算指标。失败项的 result.error 非空，不影响其他。"""
+    service = get_service()
+    results = service.calculate_metrics_batch(
+        metric_ids, persist=persist, tenant_id=_TENANT_ID
+    )
+    cleaned = []
+    for r in results:
+        metric = r.get("metric", {})
+        cleaned.append({
+            "metric": _clean(metric) if isinstance(metric, dict) else metric,
+            "result": r.get("result", {}),
+        })
+    return _json(cleaned)
+
+
+@mcp.tool()
+def xingtu_get_metric_history(
+    metric_id: str,
+    limit: int = 100,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+) -> str:
+    """获取指标历史结果（时间序列，最新在前）。
+
+    Args:
+        metric_id: 指标 ID
+        limit: 最多返回数
+        since: ISO 时间，起始
+        until: ISO 时间，截止
+    """
+    service = get_service()
+    results = service.get_metric_history(
+        metric_id, limit=limit, since=since, until=until
+    )
+    return _json(results)
 
 
 # ===== MCP 资源 =====
