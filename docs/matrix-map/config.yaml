@@ -1,0 +1,50 @@
+# Matrix 地图工具配置
+# 所有脚本（sync/validate/build）读取此文件。
+# 本地覆盖请用 config.local.yaml（已 gitignore）。
+# 密钥只放环境变量，绝不进 yaml。
+
+# 默认使用的环境（CLI 可用 --env 覆盖）
+default_env: test
+
+environments:
+  test:
+    url: https://matrix-os-test.fly.dev
+    token_env: MATRIX_TEST_TOKEN       # 从这个环境变量读 token
+    caller_id: map-sync                # 放入 X-Caller-ID
+    timeout_sec: 15
+
+  prod:
+    url: https://matrix-os.fly.dev
+    token_env: MATRIX_PROD_TOKEN
+    caller_id: map-sync
+    timeout_sec: 15
+
+  local:                                # 本地部署（如未来有）
+    url: http://127.0.0.1:8080
+    token_env: MATRIX_LOCAL_TOKEN
+    caller_id: map-sync
+    timeout_sec: 5
+
+# API 端点（Matrix API 演进时改这里，脚本不改）
+api_endpoints:
+  rooms: /api/admin/rooms
+  tasks: /api/admin/tasks
+  areas: /api/admin/areas            # 如果存在
+  # 未来：/api/admin/rooms/{key}/seat-policy, /api/admin/rooms/{key}/detail 等
+
+# 同步行为
+sync:
+  stub_new_rooms: true                 # 新 room 自动生成 stub
+  stub_template: templates/room-stub.yaml
+  fail_on_orphan: false                # 废弃 room 只警告不阻断
+
+# 校验
+validate:
+  stale_days_default: 14               # 节点默认过期阈值
+  strict: true                         # true = warning 也当 error
+  skip_live_check: false               # true = 不检查 room_key 是否在 live 中
+
+# 日志/输出
+output:
+  color: true
+  verbose: false

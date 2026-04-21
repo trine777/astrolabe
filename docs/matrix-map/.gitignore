@@ -1,0 +1,15 @@
+# 本地覆盖配置（含密钥引用路径、私有 URL 等）
+config.local.yaml
+
+# 任何 .env 文件
+.env
+.env.*
+!.env.example
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 生成物（由 build 脚本生成）
+MATRIX_OPS_MAP.yaml
+MATRIX_OPS_MAP.yaml.sha256

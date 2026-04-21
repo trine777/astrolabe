@@ -25,8 +25,8 @@ class EmbeddingConfig(BaseModel):
         description="嵌入模型名称",
     )
     dimension: int = Field(
-        default=1536,
-        description="嵌入向量维度",
+        default_factory=lambda: int(os.environ.get("XINGTU_VECTOR_DIM", "1536")),
+        description="嵌入向量维度（需与模型输出维度匹配）",
     )
     api_key: Optional[str] = Field(
         default=None,
