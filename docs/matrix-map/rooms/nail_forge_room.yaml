@@ -20,13 +20,14 @@ operations:
     parent: room-nail_forge_room
     verified_at: 2026-04-21
     verified_by: claude
+    references: [op-query-task]
     docs:
       - type: curl
         title: 派发 forge_skill 任务
         language: bash
         content: |
-          curl -s -X POST "$URL/api/admin/create-task" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/admin/create-task" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{

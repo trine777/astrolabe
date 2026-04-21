@@ -20,13 +20,14 @@ operations:
     parent: room-nous_spec
     verified_at: 2026-04-21
     verified_by: claude
+    references: [op-query-task]
     docs:
       - type: curl
         title: Spec 3 阶段任务
         language: bash
         content: |
-          curl -s -X POST "$URL/api/admin/create-task" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/admin/create-task" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{
@@ -37,4 +38,16 @@ operations:
               \"requested_room_key\": \"nous_spec\",
               \"input_payload\": {\"spec_name\":\"...\",\"scope\":\"...\"}
             }"
-          # task_type: spec_write | spec_review | param_define
+          # 下一步: op-query-task 查状态
+      - type: rule
+        title: 3 阶段含义与依赖
+        content: |
+          spec_write   — 写初版技术规格 (what, scope, constraints)
+                          产物: spec_draft.md
+          spec_review  — 规格 peer review (可讨论 room 并行)
+                          产物: spec_reviewed.md + 评审意见
+          param_define — 参数空间收敛 (default / min / max / enum)
+                          产物: params.yaml
+
+          write → review 严格串行, review 通过才能 param_define.
+          review 不过会回退 spec_write.

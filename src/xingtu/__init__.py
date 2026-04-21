@@ -119,6 +119,10 @@ class XingTuService:
         # 指标计算引擎
         self._calculator = MetricCalculator(self.store)
 
+        # Matrix 操作地图子服务
+        from .matrix_map import MatrixMapService
+        self.matrix_map = MatrixMapService(self.store, self.events)
+
         # 初始化小世界模型
         from .intent import IntentTranslator
         from .delta import DeltaGenerator

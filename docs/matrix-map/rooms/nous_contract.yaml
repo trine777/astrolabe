@@ -20,13 +20,14 @@ operations:
     parent: room-nous_contract
     verified_at: 2026-04-21
     verified_by: claude
+    references: [op-query-task]
     docs:
       - type: curl
         title: Contract 4 阶段任务
         language: bash
         content: |
-          curl -s -X POST "$URL/api/admin/create-task" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/admin/create-task" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{
@@ -37,4 +38,20 @@ operations:
               \"requested_room_key\": \"nous_contract\",
               \"input_payload\": {\"contract_name\":\"...\",\"parties\":[\"...\"]}
             }"
-          # task_type: contract_scaffold | contract_implement | contract_audit | contract_deploy
+          # 下一步: op-query-task 查状态
+      - type: rule
+        title: 4 阶段含义与依赖
+        content: |
+          按顺序执行:
+
+          contract_scaffold  — 起草契约骨架 (parties, obligations, guarantees)
+                                产物: contract_draft.yaml
+          contract_implement — 生成实际代码 (如函数签名 / gRPC proto)
+                                产物: 实现代码
+          contract_audit     — 合约审核 (完备性 / 冲突检测)
+                                产物: audit_report.md
+          contract_deploy    — 上架到 contract registry
+                                产物: contract_registered_at
+
+          任务间通过 input_payload.previous_task_id 串联.
+          审核不过自动打回 contract_scaffold 重做.
