@@ -1,16 +1,13 @@
 [
   {
     "accepted_task_types": [
-      "ppt_generation",
-      "pitch_deck",
-      "tech_talk",
-      "academic_deck"
+      "discussion"
     ],
-    "registered_at": "2026-04-20T13:33:16Z",
-    "room_definition_id": "room-ppt-agent-v1",
-    "room_key": "ppt_agent_room",
+    "registered_at": "2026-04-01T13:15:28Z",
+    "room_definition_id": "discussion-room-v1",
+    "room_key": "discussion-room",
     "status": "stable",
-    "version": 4
+    "version": 1
   },
   {
     "accepted_task_types": [
@@ -19,6 +16,17 @@
     "registered_at": "2026-04-17T02:51:41Z",
     "room_definition_id": "discussion-room-wide-v1",
     "room_key": "discussion-room-wide",
+    "status": "stable",
+    "version": 1
+  },
+  {
+    "accepted_task_types": [
+      "literature_review",
+      "systematic_review"
+    ],
+    "registered_at": "2026-04-15T14:28:36Z",
+    "room_definition_id": "room-literature-research-v1",
+    "room_key": "literature_research",
     "status": "stable",
     "version": 1
   },
@@ -38,14 +46,11 @@
   },
   {
     "accepted_task_types": [
-      "frame_design",
-      "frame_implement",
-      "frame_integrate",
-      "frame_deploy"
+      "forge_skill"
     ],
-    "registered_at": "2026-04-16T07:02:18Z",
-    "room_definition_id": "room-nous-frame-v1",
-    "room_key": "nous_frame",
+    "registered_at": "2026-03-31T04:08:58Z",
+    "room_definition_id": "room-nail-forge-v1",
+    "room_key": "nail_forge_room",
     "status": "stable",
     "version": 1
   },
@@ -64,6 +69,19 @@
   },
   {
     "accepted_task_types": [
+      "frame_design",
+      "frame_implement",
+      "frame_integrate",
+      "frame_deploy"
+    ],
+    "registered_at": "2026-04-16T07:02:18Z",
+    "room_definition_id": "room-nous-frame-v1",
+    "room_key": "nous_frame",
+    "status": "stable",
+    "version": 1
+  },
+  {
+    "accepted_task_types": [
       "spec_write",
       "spec_review",
       "param_define"
@@ -76,48 +94,16 @@
   },
   {
     "accepted_task_types": [
-      "feature_implementation",
-      "discussion_to_pr",
-      "bug_fix",
-      "refactoring",
-      "doc_improvement"
+      "ppt_generation",
+      "pitch_deck",
+      "tech_talk",
+      "academic_deck"
     ],
-    "registered_at": "2026-04-15T16:18:38Z",
-    "room_definition_id": "room-matrix-iteration-v1",
-    "room_key": "matrix_iteration",
+    "registered_at": "2026-04-20T13:33:16Z",
+    "room_definition_id": "room-ppt-agent-v1",
+    "room_key": "ppt_agent_room",
     "status": "stable",
-    "version": 1
-  },
-  {
-    "accepted_task_types": [
-      "literature_review",
-      "systematic_review"
-    ],
-    "registered_at": "2026-04-15T14:28:36Z",
-    "room_definition_id": "room-literature-research-v1",
-    "room_key": "literature_research",
-    "status": "stable",
-    "version": 1
-  },
-  {
-    "accepted_task_types": [
-      "discussion"
-    ],
-    "registered_at": "2026-04-01T13:15:28Z",
-    "room_definition_id": "discussion-room-v1",
-    "room_key": "discussion-room",
-    "status": "stable",
-    "version": 1
-  },
-  {
-    "accepted_task_types": [
-      "forge_skill"
-    ],
-    "registered_at": "2026-03-31T04:08:58Z",
-    "room_definition_id": "room-nail-forge-v1",
-    "room_key": "nail_forge_room",
-    "status": "stable",
-    "version": 1
+    "version": 4
   },
   {
     "accepted_task_types": [

@@ -16,12 +16,18 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import yaml
+
+# S2: 禁止在 yaml 里写的敏感字段名（允许 *_env 等"引用"字段）
+_FORBIDDEN_KEY_RE = re.compile(
+    r"^(token|secret|password|api_key|apikey|auth)$", re.IGNORECASE
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = ROOT / "config.yaml"
@@ -43,6 +49,7 @@ class Config:
     api_endpoints: dict
     sync: dict
     validate: dict
+    build: dict
     output: dict
     root: Path
 
@@ -93,8 +100,21 @@ def load(
     local = _load_yaml(CONFIG_LOCAL_FILE)
     cfg = _deep_merge(base, local)
 
-    # 选环境
+    # S2: 扫描合并后的 envs，任何 token/secret/password 字段名直接阻断
     envs = cfg.get("environments", {})
+    for _env_key, _env_val in envs.items():   # 注意: 不用 env_name 变量名免遮蔽
+        if not isinstance(_env_val, dict):
+            continue
+        for k in _env_val.keys():
+            if _FORBIDDEN_KEY_RE.match(k):
+                print(
+                    f"[ERROR] 安全违规: environments.{_env_key}.{k} 不允许在 yaml 中定义。"
+                    f"\n        只能用 token_env（引用环境变量名），密钥只走环境变量。",
+                    file=sys.stderr,
+                )
+                sys.exit(3)
+
+    # 选环境
     chosen = env_name or os.environ.get("MATRIX_ENV") or cfg.get("default_env", "test")
     if chosen not in envs:
         print(
@@ -135,10 +155,15 @@ def load(
         or env_cfg.get("caller_id", "map-sync")
     )
 
-    # Timeout
-    timeout = int(
-        os.environ.get("MATRIX_TIMEOUT", env_cfg.get("timeout_sec", 15))
-    )
+    # Timeout (B2: 非数字不要堆栈崩)
+    timeout_raw = os.environ.get("MATRIX_TIMEOUT", env_cfg.get("timeout_sec", 30))
+    try:
+        timeout = int(timeout_raw)
+        if timeout <= 0:
+            raise ValueError("必须 > 0")
+    except (ValueError, TypeError) as e:
+        print(f"[ERROR] timeout_sec={timeout_raw!r} 非法 ({e})", file=sys.stderr)
+        sys.exit(3)
 
     return Config(
         env=EnvConfig(
@@ -151,6 +176,7 @@ def load(
         api_endpoints=cfg.get("api_endpoints", {}),
         sync=cfg.get("sync", {}),
         validate=cfg.get("validate", {}),
+        build=cfg.get("build", {}),
         output=cfg.get("output", {}),
         root=ROOT,
     )

@@ -37,6 +37,18 @@ ALLOWED_KINDS = {"area", "room", "operation"}
 ALLOWED_DOC_TYPES = {"curl", "rule", "checklist", "diagram", "payload"}
 
 
+def _is_placeholder(val) -> bool:
+    """V1: 识别 TODO / 空串 / None 等占位符，真阻断。"""
+    if val is None:
+        return True
+    s = str(val).strip()
+    if not s:
+        return True
+    if s.upper().startswith("TODO") or s == "__TODO__":
+        return True
+    return False
+
+
 def load_all_nodes(cfg: Config) -> tuple[list[dict], list[tuple[str, str]]]:
     """扫 areas/ 和 rooms/ 下所有 yaml，提取节点。返回 (nodes, parse_errors)."""
     nodes: list[dict] = []
@@ -122,6 +134,32 @@ def validate_nodes(nodes: list[dict], live_keys: set[str], cfg: Config):
     stale_days_default = int(cfg.validate.get("stale_days_default", 14))
     today = date.today()
 
+    # W5: live 数据过期
+    live_stale_days = int(cfg.validate.get("live_stale_days", 7))
+    last_sync_path = cfg.root / "live" / "last_sync.json"
+    if last_sync_path.exists():
+        try:
+            last = json.loads(last_sync_path.read_text(encoding="utf-8"))
+            synced_at = last.get("synced_at", "")
+            if synced_at:
+                # 格式 "2026-04-21T14:29:42Z"
+                synced_date = datetime.strptime(synced_at[:10], "%Y-%m-%d").date()
+                age = (today - synced_date).days
+                if age > live_stale_days:
+                    warnings.append(
+                        f"[W5] live 数据已 {age} 天未刷新（阈值 {live_stale_days}），"
+                        f"建议先 make sync"
+                    )
+        except Exception:
+            pass
+
+    # 按父 id 分组，给 V2/V3 用
+    children_by_parent: dict[str, list[dict]] = {}
+    for n in nodes:
+        p = n.get("parent")
+        if p:
+            children_by_parent.setdefault(p, []).append(n)
+
     for n in nodes:
         src = n.get("_source_file", "?")
         nid = n.get("id", "?")
@@ -132,18 +170,16 @@ def validate_nodes(nodes: list[dict], live_keys: set[str], cfg: Config):
             errors.append(f"[E3] {nid}: kind='{kind}' 非法，允许 {ALLOWED_KINDS}")
             continue
 
-        # E5 必填字段
+        # E5 必填字段（V1: TODO/空串都当缺失）
         for fld in ("title", "verified_at"):
-            if not n.get(fld):
-                errors.append(f"[E5] {nid} ({src}): 缺字段 '{fld}'")
+            if _is_placeholder(n.get(fld)):
+                errors.append(f"[E5] {nid} ({src}): 字段 '{fld}' 为空/占位符")
 
-        # E2 parent 引用
+        # E2 parent 引用（V1: TODO/空串 → E5, 否则查引用）
         parent = n.get("parent")
         if kind in ("room", "operation"):
-            if not parent:
-                errors.append(f"[E5] {nid}: kind={kind} 必须有 parent")
-            elif str(parent).startswith("TODO"):
-                errors.append(f"[E5] {nid}: parent 仍是 'TODO'，未填")
+            if _is_placeholder(parent):
+                errors.append(f"[E5] {nid}: kind={kind} 必须有 parent（当前为空/占位符）")
             elif parent not in all_ids:
                 errors.append(f"[E2] {nid}: parent='{parent}' 不存在")
 
@@ -184,6 +220,18 @@ def validate_nodes(nodes: list[dict], live_keys: set[str], cfg: Config):
                             warnings.append(
                                 f"[W3] {nid}.docs[{i}]: curl 未见 'curl' 或 '-X'"
                             )
+
+        # V2/V3: area/room 必须有子节点
+        if kind == "area":
+            kids = children_by_parent.get(nid, [])
+            if not any(c.get("kind") == "room" for c in kids):
+                warnings.append(f"[W4] area '{nid}': 无任何 room 子节点")
+        elif kind == "room":
+            kids = children_by_parent.get(nid, [])
+            # operations 可能在同一 yaml 里内联，也可能是独立节点
+            has_op = any(c.get("kind") == "operation" for c in kids)
+            if not has_op:
+                warnings.append(f"[W4] room '{nid}': 无任何 operation 子节点")
 
         # W1 verified_at 过期
         verified = parse_date(n.get("verified_at"))

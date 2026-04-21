@@ -1,8 +1,10 @@
 {
   "env": "prod",
   "source_url": "https://matrix-os.fly.dev/api/admin/rooms",
-  "synced_at": "2026-04-21T14:29:42Z",
-  "room_count": 11,
-  "sha256": "fdcc6bd38ada2d2c",
+  "synced_at": "2026-04-21T14:57:56Z",
+  "room_count": 10,
+  "raw_room_count": 11,
+  "dedup_conflicts": 1,
+  "sha256": "8963b9b3adc1611e",
   "caller_id": "map-sync"
 }

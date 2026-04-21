@@ -1,6 +1,11 @@
 # 本地覆盖配置（含密钥引用路径、私有 URL 等）
 config.local.yaml
 
+# rooms/ 下的 stub 由 sync.py 自动生成，不入库
+# （avg dev 跑 make sync 就有了；避免仓库污染）
+rooms/*.yaml
+!rooms/.gitkeep
+
 # 任何 .env 文件
 .env
 .env.*
