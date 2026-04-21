@@ -794,6 +794,85 @@ def xingtu_get_stats() -> str:
     return _json(service.get_stats())
 
 
+# ===== Matrix 操作地图工具 =====
+
+
+@mcp.tool()
+def xingtu_map_overview() -> str:
+    """Matrix 操作地图顶层概览 — 列出所有 Area 及下辖 room/op 数量。
+
+    Agent 查 Matrix 怎么用的第一步：先看这个，定位所在区域。
+    """
+    service = get_service()
+    return _json(service.matrix_map.overview())
+
+
+@mcp.tool()
+def xingtu_map_enter_area(area_id: str) -> str:
+    """进入某个 Area，看下辖 Room 列表。
+
+    Args:
+        area_id: Area 唯一标识（如 area-discussion）
+    """
+    service = get_service()
+    return _json(service.matrix_map.enter_area(area_id))
+
+
+@mcp.tool()
+def xingtu_map_get_room(room_id: str) -> str:
+    """获取某个 Room 的详情（含下辖 operations 标题）。
+
+    Args:
+        room_id: Room 唯一标识（如 room-discussion-room-wide）
+    """
+    service = get_service()
+    return _json(service.matrix_map.get_room(room_id))
+
+
+@mcp.tool()
+def xingtu_map_get_operation(op_id: str) -> str:
+    """获取某个 Operation 的完整内容（含 1-3 个 docs: curl/rule/diagram）。
+
+    Args:
+        op_id: Operation 唯一标识（如 op-create-discussion）
+    """
+    service = get_service()
+    return _json(service.matrix_map.get_operation(op_id))
+
+
+@mcp.tool()
+def xingtu_map_graph(
+    node_id: str,
+    max_hops: int = 1,
+    relation_types: Optional[list[str]] = None,
+) -> str:
+    """查看地图节点的图关系（入/出边，支持多跳）。
+
+    用于发现跨 area 的依赖、引用、替代关系。
+
+    Args:
+        node_id: 节点 ID（area/room/operation 任一）
+        max_hops: BFS 深度 1-3（默认 1 跳）
+        relation_types: 过滤关系类型 ["contains", "references", "derived_from", "superseded_by"]
+    """
+    service = get_service()
+    return _json(service.matrix_map.graph(
+        node_id=node_id, max_hops=max_hops, relation_types=relation_types,
+    ))
+
+
+@mcp.tool()
+def xingtu_map_find(query: str, limit: int = 10) -> str:
+    """按关键词找 operation（搜标题和 tag）。
+
+    Args:
+        query: 关键词
+        limit: 返回上限
+    """
+    service = get_service()
+    return _json(service.matrix_map.find(query=query, limit=limit))
+
+
 @mcp.tool()
 def xingtu_optimize() -> str:
     """优化星图数据库 — 压缩文件、清理旧版本。"""
