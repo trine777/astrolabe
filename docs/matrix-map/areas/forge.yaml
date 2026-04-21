@@ -1,0 +1,8 @@
+id: area-forge
+title: 技能锻造
+kind: area
+summary: NailForge 把可复用能力锻造为 skill，供所有 room 引用。Skill = 原子能力单元。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [forge, skill, nailforge]
