@@ -1,0 +1,8 @@
+id: area-discussion
+title: 讨论决议
+kind: area
+summary: 用多 Agent 讨论 room 达成结构化决议。Topic → Seats → Phases → Resolution → Artifact。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [discussion, consensus, governance]

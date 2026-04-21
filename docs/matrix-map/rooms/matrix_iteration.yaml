@@ -1,0 +1,93 @@
+id: room-matrix_iteration
+title: 迭代室 (feature → PR)
+kind: room
+parent: area-iteration
+room_key: matrix_iteration
+room_version: 2
+accepted_task_types: [feature_implementation, discussion_to_pr, bug_fix, refactoring, doc_improvement]
+summary: 5 节点工作流自动化 feature 开发 (intake → design → code → test → pr)。quality gate 强校验。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [iteration, feature, pr, workflow]
+
+operations:
+  - id: op-dispatch-iteration
+    kind: operation
+    title: 创建迭代任务
+    parent: room-matrix_iteration
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 派发 feature_implementation 任务
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/admin/create-task" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"task_id\": \"task-feat-$(date +%s)\",
+              \"task_type\": \"feature_implementation\",
+              \"requester_id\": \"trine\",
+              \"idempotency_key\": \"feat-xxx-v1\",
+              \"requested_room_key\": \"matrix_iteration\",
+              \"input_payload\": {
+                \"feature_name\": \"...\",
+                \"issue_ref\": \"<url or decision_id>\",
+                \"acceptance_criteria\": [\"...\"]
+              }
+            }"
+      - type: rule
+        title: task_type 5 种
+        content: |
+          feature_implementation: 新功能
+          discussion_to_pr:       从讨论决议变 PR
+          bug_fix:                修 bug
+          refactoring:            重构
+          doc_improvement:        改文档
+
+  - id: op-watch-quality-gate
+    kind: operation
+    title: 5 节点 quality gate 要求
+    parent: room-matrix_iteration
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: diagram
+        title: 5 节点流
+        language: text
+        content: |
+          node-issue-intake   → 解析 feature request 为结构化
+          node-design-draft   → 设计文档 (需 design_doc_3x3 字段)
+          node-code-implement → 代码实现 (需 implemented_files / migration_files / summary)
+          node-test-write     → 测试 (需 tests 字段)
+          node-pr-assemble    → PR 组装 (需 pr_description / changelog)
+      - type: rule
+        title: 节点 output_required_fields 不满足会自动 retry
+        content: |
+          每个节点在 room 编译期定义了 output_required_fields.
+          LLM 输出缺字段 → 自动 retry (D22 决议).
+          常见 retry 原因:
+          - design 节点漏 design_doc_3x3
+          - code 节点漏 implemented_files 或 migration_files
+
+  - id: op-watch-task
+    kind: operation
+    title: 跟踪迭代状态
+    parent: room-matrix_iteration
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 查任务 + 实例
+        language: bash
+        content: |
+          curl -s "$URL/api/admin/tasks/$TASK_ID" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine"
+          # 返回: {task_id, status, instances[], artifacts[]}
+          # instances[].current_node / instances[].status

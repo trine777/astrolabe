@@ -1,0 +1,40 @@
+id: room-nous_frame
+title: Nous Frame (形态)
+kind: room
+parent: area-nous
+room_key: nous_frame
+room_version: 1
+accepted_task_types: [frame_design, frame_implement, frame_integrate, frame_deploy]
+summary: 认知框架的"形态"层。D33 first user journey 决议的落地。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [nous, frame]
+
+operations:
+  - id: op-dispatch-frame
+    kind: operation
+    title: 派发 Frame 任务
+    parent: room-nous_frame
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: Frame 4 阶段任务
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/admin/create-task" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"task_id\": \"task-frame-$(date +%s)\",
+              \"task_type\": \"frame_design\",
+              \"requester_id\": \"trine\",
+              \"idempotency_key\": \"frame-xxx\",
+              \"requested_room_key\": \"nous_frame\",
+              \"input_payload\": {\"frame_name\":\"...\",\"intent\":\"...\"}
+            }"
+          # task_type: frame_design | frame_implement | frame_integrate | frame_deploy

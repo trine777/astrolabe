@@ -1,0 +1,8 @@
+id: area-iteration
+title: 开发迭代
+kind: area
+summary: 自动化从 feature request 到 PR 的 5 节点工作流（intake → design → code → test → pr）。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [iteration, feature, pr]

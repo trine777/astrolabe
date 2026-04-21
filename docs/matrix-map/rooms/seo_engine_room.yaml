@@ -1,0 +1,50 @@
+id: room-seo_engine_room
+title: SEO 引擎室
+kind: room
+parent: area-content
+room_key: seo_engine_room
+room_version: 1
+accepted_task_types: [seo_content, seo_programmatic, seo_audit, seo_refresh]
+summary: SEO 4 模式：单篇内容 / 程序化批量 / 站点审计 / 刷新更新。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [content, seo]
+
+operations:
+  - id: op-dispatch-seo
+    kind: operation
+    title: 派发 SEO 任务
+    parent: room-seo_engine_room
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 通用模板
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/admin/create-task" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"task_id\": \"task-seo-$(date +%s)\",
+              \"task_type\": \"seo_content\",
+              \"requester_id\": \"trine\",
+              \"idempotency_key\": \"seo-xxx\",
+              \"requested_room_key\": \"seo_engine_room\",
+              \"input_payload\": {
+                \"keyword\": \"...\",
+                \"intent\": \"informational / commercial / transactional\",
+                \"target_length_words\": 2000
+              }
+            }"
+      - type: rule
+        title: task_type 选择指南
+        content: |
+          seo_content:      一篇特定关键词的完整内容
+          seo_programmatic: 模板批量 (千级落地页)
+          seo_audit:        审查现有站点的 SEO 问题
+          seo_refresh:      已发布内容的更新与再优化

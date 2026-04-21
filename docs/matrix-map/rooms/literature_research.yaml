@@ -1,0 +1,48 @@
+id: room-literature_research
+title: 文献调研室
+kind: room
+parent: area-research
+room_key: literature_research
+room_version: 1
+accepted_task_types: [literature_review, systematic_review]
+summary: 对外部文献做综述或系统性调研。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [research, literature]
+
+operations:
+  - id: op-dispatch-research
+    kind: operation
+    title: 派发文献调研任务
+    parent: room-literature_research
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: literature_review 任务
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/admin/create-task" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"task_id\": \"task-lit-$(date +%s)\",
+              \"task_type\": \"literature_review\",
+              \"requester_id\": \"trine\",
+              \"idempotency_key\": \"lit-xxx\",
+              \"requested_room_key\": \"literature_research\",
+              \"input_payload\": {
+                \"topic\":\"...\",
+                \"scope\":\"<time range / journal list / keywords>\",
+                \"target_output\":\"overview | gap_analysis | methodology_comparison\"
+              }
+            }"
+      - type: rule
+        title: task_type 选择
+        content: |
+          literature_review:  对一个主题的综述
+          systematic_review:  按 PRISMA 等方法论的系统性调研 (要求 search query + 筛选准则)

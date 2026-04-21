@@ -1,0 +1,39 @@
+id: room-discussion-room
+title: 讨论室 (基础版)
+kind: room
+parent: area-discussion
+room_key: discussion-room
+room_version: 1
+accepted_task_types: [discussion]
+summary: 早期版本讨论室。新用户建议直接用 discussion-room-wide-v1。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [discussion, legacy]
+
+operations:
+  - id: op-create-discussion-basic
+    kind: operation
+    title: 建立基础讨论
+    parent: room-discussion-room
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: rule
+        title: 优先用 discussion-room-wide
+        content: |
+          discussion-room-v1 是早期版本. 新需求直接用 discussion-room-wide-v1,
+          API 族与本 room 完全一致, 只是 seat_policy 更灵活 (1-7 expert vs 固定 3).
+          除非有历史兼容原因, 否则不要新建 discussion-room-v1 session.
+      - type: curl
+        title: 如必须用, 流程同 wide (仅 room_definition_id 换)
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/discussion/confirm-topic" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{\"topic_id\":\"$TOPIC_ID\",\"room_definition_id\":\"discussion-room-v1\"}"
+          # 其余步骤 (join-seat/speak/resolve) 同 discussion-room-wide 节点

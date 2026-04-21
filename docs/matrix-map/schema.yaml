@@ -1,0 +1,99 @@
+# Matrix 操作地图 — 节点 Schema 定义
+# 所有 areas/*.yaml 和 rooms/*.yaml 文件必须遵循此 schema。
+# 由 scripts/validate.py 强制校验。
+
+schema_version: "1"
+
+# ------------------------------------------------------------------
+# 节点通用字段
+# ------------------------------------------------------------------
+node:
+  required:
+    - id              # 全局唯一 (推荐前缀: area- / room- / op-)
+    - title           # 人类可读名
+    - kind            # area | room | operation
+    - verified_at     # ISO 日期 (YYYY-MM-DD)
+  optional:
+    - parent          # 父节点 id (area 层没有)
+    - summary         # 30-60 字说明
+    - source          # human | api | memory | discussion  (默认 human)
+    - verified_by     # agent/user id (默认 "unknown")
+    - stale_days      # 过期天数阈值 (默认 14)
+    - tags            # 字符串数组
+    - refs            # 外部引用 (memory_id / decision_id / commit / URL)
+
+# ------------------------------------------------------------------
+# 按 kind 额外要求
+# ------------------------------------------------------------------
+kind_rules:
+  area:
+    # L1 Area 节点（如 "讨论决议"、"开发迭代"）
+    must_have_children: true
+    children_kind: [room]
+    parent: null
+
+  room:
+    # L2 Room 节点（对应 Matrix 的 room_key）
+    must_have_children: true
+    children_kind: [operation]
+    parent_kind: area
+    extra_required:
+      - room_key      # 必须匹配 live/rooms.json 中的一项
+    extra_optional:
+      - room_version
+      - accepted_task_types
+
+  operation:
+    # L3 操作节点（如 "起一个讨论"）
+    must_have_children: false
+    parent_kind: room
+    extra_required:
+      - docs          # 必须 1-3 个文档
+    docs_constraint:
+      min: 1
+      max: 3
+
+# ------------------------------------------------------------------
+# docs 子结构
+# ------------------------------------------------------------------
+doc:
+  required:
+    - type            # curl | rule | checklist | diagram | payload
+    - title           # 简短标题
+    - content         # 实际内容（字符串）
+  optional:
+    - language        # bash / json / yaml / markdown
+    - verified_at     # 独立验证日期（覆盖 operation 的）
+    - notes
+
+# ------------------------------------------------------------------
+# 全局校验规则
+# ------------------------------------------------------------------
+rules:
+  - id: unique_ids
+    desc: 所有节点 id 全局唯一
+    level: error
+
+  - id: parent_resolves
+    desc: parent 字段引用的 id 必须存在
+    level: error
+
+  - id: operation_docs_count
+    desc: operation 节点 docs 必须 1-3 个
+    level: error
+
+  - id: room_key_in_live
+    desc: room 节点的 room_key 必须出现在 live/rooms.json
+    level: error
+
+  - id: no_orphan_room
+    desc: live/rooms.json 中的每个 room 必须在 rooms/ 下有对应 yaml
+    level: warning
+
+  - id: verified_fresh
+    desc: verified_at 超过 stale_days 必须刷新
+    level: warning
+
+  - id: curl_shape
+    desc: type=curl 的 doc 必须包含 "-X" 或 "curl"
+    level: warning

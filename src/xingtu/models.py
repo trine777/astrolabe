@@ -7,12 +7,18 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
 from lancedb.pydantic import LanceModel, Vector
 from pydantic import BaseModel, Field
+
+# Vector dimension fixed at schema-build time.
+# Override via XINGTU_VECTOR_DIM (1024 for BGE-M3, 768 for EmbeddingGemma).
+# Default 1536 matches OpenAI text-embedding-3-small (backward compat).
+VECTOR_DIM = int(os.getenv("XINGTU_VECTOR_DIM", "1536"))
 
 
 # ===== 枚举类型 =====
@@ -175,7 +181,7 @@ class Document(LanceModel):
     tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     collection_id: str = Field(description="所属集合 ID")
     content: str = Field(description="文本内容/描述")
-    vector: Vector(1536) = Field(description="文本嵌入向量")  # type: ignore[valid-type]
+    vector: Vector(VECTOR_DIM) = Field(description="文本嵌入向量")  # type: ignore[valid-type,call-arg]
     content_type: str = Field(default=ContentType.text.value, description="内容类型")
     source_uri: Optional[str] = Field(default=None, description="原始文件路径/URL")
     tags: List[str] = Field(default_factory=list, description="标签列表")
@@ -241,7 +247,7 @@ class AgentMemory(LanceModel):
         default=MemoryType.semantic.value, description="记忆类型"
     )
     content: str = Field(description="记忆内容")
-    vector: Vector(1536) = Field(description="内容嵌入向量")  # type: ignore[valid-type]
+    vector: Vector(VECTOR_DIM) = Field(description="内容嵌入向量")  # type: ignore[valid-type]
     importance: float = Field(default=0.5, description="重要性评分 0-1")
     access_count: int = Field(default=0, description="访问次数")
     last_accessed: str = Field(default_factory=now_iso, description="最后访问时间")
@@ -262,7 +268,7 @@ class UniverseGoal(LanceModel):
     id: str = Field(description="目标唯一标识")
     tenant_id: str = Field(default="default", description="租户 ID / Area ID")
     intent_text: str = Field(description="原始意图文本")
-    intent_vector: Vector(1536) = Field(description="意图嵌入向量")  # type: ignore[valid-type]
+    intent_vector: Vector(VECTOR_DIM) = Field(description="意图嵌入向量")  # type: ignore[valid-type]
     status: str = Field(default=GoalStatus.pending.value, description="目标状态")
 
     # 预期宇宙状态（存储为 JSON 字符串）

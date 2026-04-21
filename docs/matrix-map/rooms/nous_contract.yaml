@@ -1,0 +1,40 @@
+id: room-nous_contract
+title: Nous Contract (契约)
+kind: room
+parent: area-nous
+room_key: nous_contract
+room_version: 1
+accepted_task_types: [contract_scaffold, contract_implement, contract_audit, contract_deploy]
+summary: 认知框架的"契约"层。定义 agent 之间的交互约束。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [nous, contract]
+
+operations:
+  - id: op-dispatch-contract
+    kind: operation
+    title: 派发 Contract 任务
+    parent: room-nous_contract
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: Contract 4 阶段任务
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/admin/create-task" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"task_id\": \"task-ctr-$(date +%s)\",
+              \"task_type\": \"contract_scaffold\",
+              \"requester_id\": \"trine\",
+              \"idempotency_key\": \"ctr-xxx\",
+              \"requested_room_key\": \"nous_contract\",
+              \"input_payload\": {\"contract_name\":\"...\",\"parties\":[\"...\"]}
+            }"
+          # task_type: contract_scaffold | contract_implement | contract_audit | contract_deploy

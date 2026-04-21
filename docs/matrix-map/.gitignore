@@ -1,0 +1,19 @@
+# 本地覆盖配置（含密钥引用路径、私有 URL 等）
+config.local.yaml
+
+# rooms/ 下填好内容的 yaml 入库，供 agent 加载
+# 注意: sync.py 生成的 stub 含空占位符，validate 会阻断，不会误入库
+
+
+# 任何 .env 文件
+.env
+.env.*
+!.env.example
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 生成物（由 build 脚本生成）
+MATRIX_OPS_MAP.yaml
+MATRIX_OPS_MAP.yaml.sha256

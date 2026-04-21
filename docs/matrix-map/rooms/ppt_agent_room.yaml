@@ -1,0 +1,51 @@
+id: room-ppt_agent_room
+title: PPT 生成室
+kind: room
+parent: area-content
+room_key: ppt_agent_room
+room_version: 4
+accepted_task_types: [ppt_generation, pitch_deck, tech_talk, academic_deck]
+summary: 4 种 PPT 模式：通用/投资路演/技术分享/学术报告。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [content, ppt, slides]
+
+operations:
+  - id: op-dispatch-ppt
+    kind: operation
+    title: 派发 PPT 任务
+    parent: room-ppt_agent_room
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 通用模板 (按 task_type 切 4 模式)
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/admin/create-task" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"task_id\": \"task-ppt-$(date +%s)\",
+              \"task_type\": \"pitch_deck\",
+              \"requester_id\": \"trine\",
+              \"idempotency_key\": \"ppt-xxx-v1\",
+              \"requested_room_key\": \"ppt_agent_room\",
+              \"input_payload\": {
+                \"title\": \"...\",
+                \"target_audience\": \"investors / engineers / academics\",
+                \"key_messages\": [\"...\"],
+                \"reference_material\": \"<url or decision_id>\"
+              }
+            }"
+      - type: rule
+        title: task_type 4 选 1
+        content: |
+          ppt_generation: 通用 PPT (任何主题)
+          pitch_deck:     投资路演 (problem → solution → traction → ask)
+          tech_talk:      技术分享 (技术深度 + demo)
+          academic_deck:  学术报告 (methodology + results + discussion)

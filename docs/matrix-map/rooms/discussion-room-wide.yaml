@@ -1,0 +1,228 @@
+id: room-discussion-room-wide
+title: 宽幅讨论室
+kind: room
+parent: area-discussion
+room_key: discussion-room-wide
+room_version: 1
+accepted_task_types: [discussion]
+summary: 5 坐席共识机制（1 chair + 1-7 expert + 1-2 critic）。适合多维度决策。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [discussion, consensus, wide]
+
+operations:
+  - id: op-create-discussion
+    kind: operation
+    title: 建 topic 并开 session
+    parent: room-discussion-room-wide
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 两步脚本 (create-topic → confirm-topic)
+        language: bash
+        content: |
+          URL=${MATRIX_URL:-https://matrix-os.fly.dev}
+          TOKEN=$MATRIX_PROD_TOKEN
+          TOPIC_ID="topic-$(uuidgen | tr A-Z a-z)"
+
+          # 1. 建 topic（内容不绑 session）
+          curl -s -X POST "$URL/api/discussion/create-topic" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"topic_id\": \"$TOPIC_ID\",
+              \"title\": \"<标题>\",
+              \"question\": \"<一句话要决的事>\",
+              \"background\": \"<上下文>\",
+              \"constraints\": \"<硬约束字符串>\",
+              \"expected_output_type\": \"decision\",
+              \"evidence_refs\": \"<文档/commit/记忆引用>\",
+              \"urgency\": \"high\"
+            }"
+
+          # 2. 绑 room type + 建 session
+          curl -s -X POST "$URL/api/discussion/confirm-topic" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{\"topic_id\":\"$TOPIC_ID\",\"room_definition_id\":\"discussion-room-wide-v1\"}"
+          # 返回: {session_id, discussion_task_id, status: "seating"}
+      - type: rule
+        title: expected_output_type 必须是枚举
+        content: |
+          只能是以下 6 个值之一:
+            decision | recommendation | risk_assessment | discussion | exploration | review
+          写错直接 422.
+      - type: rule
+        title: constraints / evidence_refs 是字符串不是对象
+        content: |
+          老 API 这两个字段要 string, 不是 array/object.
+          想传结构化请 JSON.stringify(...) 再传进来.
+
+  - id: op-join-seats
+    kind: operation
+    title: 5 坐席就位
+    parent: room-discussion-room-wide
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 循环建 chair + 3 expert + 1 critic
+        language: bash
+        content: |
+          # 每个 agent 一条, 用 X-Agent-ID (不是 X-Caller-ID!)
+          for PAIR in "chair|lamport" "expert|knuth" "expert|torvalds" \
+                      "expert|miyamoto" "critic|schneier"; do
+            ROLE=${PAIR%|*}; AGENT=${PAIR#*|}
+            curl -s -X POST "$URL/api/discussion/join-seat" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "X-Agent-ID: $AGENT" \
+              -H "Content-Type: application/json" \
+              -d "{\"session_id\":\"$SESSION\",\"seat_role\":\"$ROLE\"}"
+          done
+          # 每次返回 lease_id, 后续 speak/advance 要用
+      - type: rule
+        title: Header 二选 - owner 用 X-Caller-ID, seat 用 X-Agent-ID
+        content: |
+          D32 fix 之后区分:
+            owner 动作 (create-topic/confirm-topic/owner-action/resolve) → X-Caller-ID
+            seat 动作 (join-seat/speak/advance-phase/submit-confirmation) → X-Agent-ID
+          混用 → 所有人都被识别为 owner, 权限炸裂.
+      - type: rule
+        title: cardinality 限制
+        content: |
+          discussion-room-wide-v1 seat_policy:
+            chair:  1 (严格)
+            expert: 1-7
+            critic: 1-2
+          超限再 join → 422.
+
+  - id: op-run-phases
+    kind: operation
+    title: 推进 phase + 发言
+    parent: room-discussion-room-wide
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: diagram
+        title: Phase 跃迁图
+        language: text
+        content: |
+          framing → exploring → narrowing → proposing → confirming → resolving
+
+          合法跃迁:
+            framing     → exploring           (必走)
+            exploring   → narrowing
+            narrowing   → exploring | proposing
+            proposing   → confirming
+            confirming  → proposing | resolving
+
+          跳非法跃迁 → 422.
+      - type: curl
+        title: chair 推进 phase + seat 发言
+        language: bash
+        content: |
+          # 推进 (chair 用 lease_id)
+          curl -s -X POST "$URL/api/discussion/advance-phase" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Agent-ID: lamport" \
+            -H "Content-Type: application/json" \
+            -d "{\"session_id\":\"$SESSION\",
+                 \"lease_id\":\"$CHAIR_LEASE\",
+                 \"target_phase\":\"exploring\",
+                 \"reason\":\"seats ready\"}"
+
+          # 发言 (任意 seat, phase ∈ {exploring, narrowing, confirming} 才合法)
+          curl -s -X POST "$URL/api/discussion/speak" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Agent-ID: $AGENT" \
+            -H "Content-Type: application/json" \
+            -d "{\"session_id\":\"$SESSION\",
+                 \"lease_id\":\"$LEASE\",
+                 \"content\":\"[立场] ... [推理] ...\",
+                 \"evidence_ref\":\"\"}"
+      - type: rule
+        title: speak/advance 的 phase 限制
+        content: |
+          - speak: 只在 exploring / narrowing / confirming 有效; framing/proposing 下 422
+          - advance-phase: 字段名是 target_phase (不是 to_phase)
+          - advance-phase 必须 chair lease_id
+          - content 空串 → 422; 同 seat 可多次发言
+
+  - id: op-resolve
+    kind: operation
+    title: 三条收敛出路
+    parent: room-discussion-room-wide
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 正常决议 (submit-confirmation + resolve)
+        language: bash
+        content: |
+          # 每个 seat 提交 stance (phase=confirming)
+          curl -s -X POST "$URL/api/discussion/submit-confirmation" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Agent-ID: $AGENT" \
+            -H "Content-Type: application/json" \
+            -d "{\"session_id\":\"$SESSION\",
+                 \"lease_id\":\"$LEASE\",
+                 \"stance\":\"agree\",
+                 \"reason\":\"...\"}"
+          # stance ∈ {agree, reserve, disagree}
+
+          # chair resolve
+          curl -s -X POST "$URL/api/discussion/resolve" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Agent-ID: lamport" \
+            -H "Content-Type: application/json" \
+            -d "{\"session_id\":\"$SESSION\",\"lease_id\":\"$CHAIR_LEASE\"}"
+      - type: curl
+        title: Owner 强制 resolve (phase=confirming/paused 时可用)
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/discussion/owner-action" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{\"session_id\":\"$SESSION\",
+                 \"action\":\"resolve\",
+                 \"override_reason\":\"...\"}"
+      - type: curl
+        title: Owner 任意时刻 cancel (快速出口)
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/discussion/owner-action" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{\"session_id\":\"$SESSION\",
+                 \"action\":\"cancel\",
+                 \"override_reason\":\"共识已达成但不走 formal 流程\"}"
+
+  - id: op-query-status
+    kind: operation
+    title: 查 session 状态
+    parent: room-discussion-room-wide
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: get-session
+        language: bash
+        content: |
+          curl -s "$URL/api/discussion/get-session?session_id=$SESSION" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine"
+          # 返回: {phase, round_count, speeches, seats, available_actions, resolution}
+      - type: rule
+        title: available_actions 是 UI 渲染的金钥匙
+        content: |
+          available_actions 字段告诉你当前 phase 允许什么操作.
+          不确定该做什么? 先 get-session 看这个字段.
+          可直接渲成按钮, 不用在代码里重编 phase 机.

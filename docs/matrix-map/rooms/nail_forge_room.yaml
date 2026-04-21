@@ -1,0 +1,50 @@
+id: room-nail_forge_room
+title: 灵钉冶坊 (NailForge)
+kind: room
+parent: area-forge
+room_key: nail_forge_room
+room_version: 1
+accepted_task_types: [forge_skill]
+summary: 把可复用能力锻造为 skill, 存 NailForge warehouse, 供所有 room 的 cells 引用。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [forge, skill]
+
+operations:
+  - id: op-forge-skill
+    kind: operation
+    title: 锻造 skill
+    parent: room-nail_forge_room
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 派发 forge_skill 任务
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/admin/create-task" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"task_id\": \"task-forge-$(date +%s)\",
+              \"task_type\": \"forge_skill\",
+              \"requester_id\": \"trine\",
+              \"idempotency_key\": \"forge-xxx\",
+              \"requested_room_key\": \"nail_forge_room\",
+              \"input_payload\": {
+                \"skill_name\":\"...\",
+                \"inputs\":[\"...\"],
+                \"outputs\":[\"...\"],
+                \"description\":\"...\"
+              }
+            }"
+      - type: rule
+        title: skill 的消费模式
+        content: |
+          锻造后 skill 存 NailForge warehouse.
+          Room manifest 里 skill_source 指向 warehouse, compile-room 时拉进来当 cell 的一环.
+          见 "Room 注册操作流程" 的 11 步.

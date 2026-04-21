@@ -1,0 +1,40 @@
+id: room-nous_spec
+title: Nous Spec (规范)
+kind: room
+parent: area-nous
+room_key: nous_spec
+room_version: 1
+accepted_task_types: [spec_write, spec_review, param_define]
+summary: 认知框架的"规范"层。技术规格 + 参数空间定义。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 14
+tags: [nous, spec]
+
+operations:
+  - id: op-dispatch-spec
+    kind: operation
+    title: 派发 Spec 任务
+    parent: room-nous_spec
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: Spec 3 阶段任务
+        language: bash
+        content: |
+          curl -s -X POST "$URL/api/admin/create-task" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Caller-ID: trine" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"task_id\": \"task-spec-$(date +%s)\",
+              \"task_type\": \"spec_write\",
+              \"requester_id\": \"trine\",
+              \"idempotency_key\": \"spec-xxx\",
+              \"requested_room_key\": \"nous_spec\",
+              \"input_payload\": {\"spec_name\":\"...\",\"scope\":\"...\"}
+            }"
+          # task_type: spec_write | spec_review | param_define
