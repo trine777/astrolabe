@@ -20,13 +20,14 @@ operations:
     parent: room-matrix_iteration
     verified_at: 2026-04-21
     verified_by: claude
+    references: [op-query-task]
     docs:
       - type: curl
         title: 派发 feature_implementation 任务
         language: bash
         content: |
-          curl -s -X POST "$URL/api/admin/create-task" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/admin/create-task" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{
@@ -56,6 +57,7 @@ operations:
     parent: room-matrix_iteration
     verified_at: 2026-04-21
     verified_by: claude
+    references: [op-query-task]
     docs:
       - type: diagram
         title: 5 节点流
@@ -81,13 +83,14 @@ operations:
     parent: room-matrix_iteration
     verified_at: 2026-04-21
     verified_by: claude
+    references: [op-query-task]
     docs:
       - type: curl
         title: 查任务 + 实例
         language: bash
         content: |
-          curl -s "$URL/api/admin/tasks/$TASK_ID" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s "$MATRIX_URL/api/admin/tasks/$TASK_ID" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine"
           # 返回: {task_id, status, instances[], artifacts[]}
           # instances[].current_node / instances[].status

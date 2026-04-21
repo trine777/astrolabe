@@ -1,0 +1,8 @@
+id: area-platform
+title: 平台通用
+kind: area
+summary: 跨 room 的系统级操作 — 任务状态查询、列出 room、Admin API 等。所有 dispatch 类 op 完成后都要来这里查状态。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [platform, admin, common]

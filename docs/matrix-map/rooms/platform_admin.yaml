@@ -1,0 +1,103 @@
+id: room-platform-admin
+title: 平台 Admin
+kind: room
+parent: area-platform
+room_key: __platform__
+room_version: 0
+accepted_task_types: []
+summary: 星图虚拟 room（非 Matrix 真实 room_key）——装跨 room 的通用管理操作，如任务状态查询、列出 room。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 30
+tags: [platform, admin, virtual]
+
+operations:
+  - id: op-query-task
+    kind: operation
+    title: 查任务状态（所有 room 通用）
+    parent: room-platform-admin
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 拿单个任务状态
+        language: bash
+        content: |
+          # 任意 room 派发的任务，用这个端点查状态
+          curl -s "$MATRIX_URL/api/admin/tasks/$TASK_ID" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
+            -H "X-Caller-ID: trine" | jq .
+          # 返回: {task_id, status, instances[], artifacts[]}
+          #   status: created|queued|in_progress|pending_review|completed|failed
+          #   instances[].current_node  — 当前在哪个节点
+          #   instances[].status        — 该实例的状态
+          #   artifacts[]               — 产物引用（见 op-get-artifact）
+      - type: curl
+        title: 轮询直到终态
+        language: bash
+        content: |
+          while true; do
+            STATUS=$(curl -s "$MATRIX_URL/api/admin/tasks/$TASK_ID" \
+              -H "Authorization: Bearer $MATRIX_TOKEN" -H "X-Caller-ID: trine" \
+              | jq -r '.status')
+            echo "$(date +%T) status=$STATUS"
+            [[ "$STATUS" == "completed" || "$STATUS" == "failed" ]] && break
+            sleep 15
+          done
+      - type: rule
+        title: 终态与 artifact 约定
+        content: |
+          终态:
+            completed — 任务成功, artifacts[] 非空（大多数 room）
+            failed    — 失败, 看 instances[].error 字段
+            pending_review — 需人工审核, 某些 quality gate 卡住会到这
+
+          artifact 结构（与 room 相关）:
+            PPT/SEO room: artifacts[].content_type = "pptx" / "md" / "html"
+                          artifacts[].url 或 artifacts[].content 取产物
+            iteration room: artifacts[].type = "pr"
+                            artifacts[].url = GitHub PR URL
+            discussion room: 见 /api/discussion/get-session 的 resolution 字段
+
+          地图内各 dispatch op 都应引用本 op 作为"下一步"。
+
+  - id: op-list-rooms
+    kind: operation
+    title: 列出所有 room（discovery）
+    parent: room-platform-admin
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: /api/admin/rooms
+        language: bash
+        content: |
+          curl -s "$MATRIX_URL/api/admin/rooms" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
+            -H "X-Caller-ID: trine" | jq .
+          # 返回: {count, rooms: [{room_definition_id, room_key, version,
+          #                        status, accepted_task_types, registered_at}]}
+      - type: rule
+        title: 与地图的一致性
+        content: |
+          如果 /api/admin/rooms 返回了地图里没有的 room_key，说明地图过期。
+          跑 `cd docs/matrix-map && make sync` 重新同步并生成新 stub。
+
+  - id: op-list-tasks
+    kind: operation
+    title: 列出最近任务
+    parent: room-platform-admin
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: /api/admin/tasks?limit=N
+        language: bash
+        content: |
+          curl -s "$MATRIX_URL/api/admin/tasks?limit=20" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
+            -H "X-Caller-ID: trine" | jq .
+          # 返回: {count, tasks: [{task_id, task_type, status,
+          #                        requested_room_key, created_at, updated_at}]}

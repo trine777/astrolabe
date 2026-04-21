@@ -20,13 +20,14 @@ operations:
     parent: room-nous_frame
     verified_at: 2026-04-21
     verified_by: claude
+    references: [op-query-task]
     docs:
       - type: curl
         title: Frame 4 阶段任务
         language: bash
         content: |
-          curl -s -X POST "$URL/api/admin/create-task" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/admin/create-task" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{
@@ -37,4 +38,20 @@ operations:
               \"requested_room_key\": \"nous_frame\",
               \"input_payload\": {\"frame_name\":\"...\",\"intent\":\"...\"}
             }"
-          # task_type: frame_design | frame_implement | frame_integrate | frame_deploy
+          # 下一步: op-query-task 查状态, 完成后 artifacts[] 看产物
+      - type: rule
+        title: 4 阶段含义与依赖
+        content: |
+          按顺序执行, 前阶段完成才能启动后阶段 (即每阶段任务的 idempotency_key 不同):
+
+          frame_design    — 定义形态结构 (inputs/outputs/shape)
+                             产物: frame_spec.json
+          frame_implement — 按 spec 实现代码
+                             产物: implementation 代码包
+          frame_integrate — 与已有 room/area 集成
+                             产物: 集成测试报告
+          frame_deploy    — 上生产 (需通过前三阶段)
+                             产物: 部署状态
+
+          任务要做完整 4 阶段, 需按上述顺序派 4 次 create-task, 后阶段
+          的 input_payload.previous_task_id 应指向前阶段 task_id.

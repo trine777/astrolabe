@@ -20,13 +20,14 @@ operations:
     parent: room-ppt_agent_room
     verified_at: 2026-04-21
     verified_by: claude
+    references: [op-query-task]
     docs:
       - type: curl
         title: 通用模板 (按 task_type 切 4 模式)
         language: bash
         content: |
-          curl -s -X POST "$URL/api/admin/create-task" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/admin/create-task" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{
@@ -39,9 +40,10 @@ operations:
                 \"title\": \"...\",
                 \"target_audience\": \"investors / engineers / academics\",
                 \"key_messages\": [\"...\"],
-                \"reference_material\": \"<url or decision_id>\"
+                \"reference_material\": \"\"
               }
             }"
+          # 下一步: 用 op-query-task 查状态, 终态 completed 后看 artifacts[]
       - type: rule
         title: task_type 4 选 1
         content: |
@@ -49,3 +51,19 @@ operations:
           pitch_deck:     投资路演 (problem → solution → traction → ask)
           tech_talk:      技术分享 (技术深度 + demo)
           academic_deck:  学术报告 (methodology + results + discussion)
+      - type: rule
+        title: input_payload 字段与产物约定
+        content: |
+          input_payload 字段 (PPT room 4 种 task_type 通用):
+            title              (必填) 幻灯片标题
+            target_audience    (必填) 目标观众, 自由文本
+            key_messages       (必填) 核心消息, string[] (3-8 条推荐)
+            reference_material (可选) 外部参考; 无就填 "" 空串
+                               (discussion decision_id 需先跑讨论 room 拿到)
+
+          产物 (完成后 artifacts[]):
+            artifacts[0].content_type = "pptx"
+            artifacts[0].url          = 生成的 PPT 下载地址
+            artifacts[0].metadata.slide_count
+
+          查状态与下载: 用 area-platform 的 op-query-task
