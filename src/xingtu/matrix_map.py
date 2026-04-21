@@ -38,6 +38,34 @@ REL_REFERENCES = "references"
 REL_DERIVED_FROM = "derived_from"
 REL_SUPERSEDED_BY = "superseded_by"
 
+
+_MIN_TOKEN_LEN = 3
+
+
+def _split_tokens(s: str) -> list[str]:
+    """把 snake_case / kebab-case / 空格 / 混合拆成 token。
+
+    'task_type' → ['task_type', 'task', 'type']
+    'discussion-room-wide' → ['discussion-room-wide', 'discussion', 'room', 'wide']
+    'X-Caller-ID' → ['x-caller-id', 'caller']  # 'x'/'id' 过短被过滤
+
+    短词（< 3 字符）会被过滤以避免过多误匹配。原串总是保留。
+    """
+    if not s:
+        return []
+    import re
+    original = s.lower()
+    tokens = {original}
+    # 按 _ - 空格 / 等切
+    for t in re.split(r"[_\-/\s.]+", original):
+        if t and len(t) >= _MIN_TOKEN_LEN:
+            tokens.add(t)
+    # 纯字母段（提取混合词里的字母部分）
+    for m in re.findall(r"[a-z]+", original):
+        if m and len(m) >= _MIN_TOKEN_LEN:
+            tokens.add(m)
+    return list(tokens)
+
 # operation 文档的 metadata_json 结构示例:
 # {
 #   "kind": "operation",
@@ -321,12 +349,20 @@ class MatrixMapService:
             total_rooms += room_count
             total_ops += op_count
 
-        return {
+        result = {
             "area_count": len(areas),
             "room_count": total_rooms,
             "operation_count": total_ops,
             "areas": sorted(areas, key=lambda x: x["id"]),
         }
+        # Bootstrap hint: 空库明显区分"没数据"vs"真实空"
+        if not areas:
+            result["hint"] = (
+                "地图为空。可能原因: (1) 还没导入数据, 跑 "
+                "`python scripts/import_matrix_map.py`; (2) XINGTU_DB_PATH "
+                "指向了错的目录; (3) 租户 ID 不对."
+            )
+        return result
 
     def enter_area(self, area_id: str) -> dict:
         """进入某 Area，看下辖 room 列表。"""
@@ -463,33 +499,138 @@ class MatrixMapService:
             "edges": all_edges,
         }
 
-    def find(self, query: str, limit: int = 10) -> list[dict]:
+    def find(
+        self,
+        query: str,
+        limit: int = 10,
+        kinds: Optional[list[str]] = None,
+    ) -> list[dict]:
         """
-        按标题/summary/tag 找 operation。走简单 substring 匹配。
-        （未来可接 hybrid_search 做语义）
+        全层级搜索 (area + room + operation + op docs content)。
+
+        匹配规则:
+          - substring 大小写不敏感
+          - snake_case / kebab-case 拆词后每段也匹配 (搜 'task' 能命中 'task_type')
+          - 命中字段标在 `matched_in` (name/summary/tag/room_key/task_type/doc_content)
+
+        Args:
+            query: 关键词
+            limit: 返回上限
+            kinds: 过滤类型 ["area", "room", "operation"], 默认全搜
         """
-        q = query.lower()
+        q = query.lower().strip()
+        if not q:
+            return []
+
+        # query 拆词 (支持 "task_type" 搜到 "task" 或 "type")
+        q_parts = {p for p in _split_tokens(q) if p}
+        q_all = {q, *q_parts}
+
+        kinds_filter = set(kinds or ["area", "room", "operation"])
         results: list[dict] = []
 
-        # 扫所有 map_room 下的 document (operation)
-        rooms = self.store.list_collections(collection_type=ROOM_TYPE)
-        for room in rooms:
-            docs = self.store.list_documents(collection_id=room["id"], limit=1000)
-            for d in docs:
-                content = str(d.get("content", "")).lower()
-                tags = [str(t).lower() for t in (d.get("tags") or [])]
-                meta = self._parse_meta(d)
-                if q in content or any(q in t for t in tags):
+        def _hit(text: str | None) -> bool:
+            if not text:
+                return False
+            s = str(text).lower()
+            return any(k in s for k in q_all)
+
+        def _tag_hit(tags: list) -> bool:
+            for t in (tags or []):
+                if _hit(t):
+                    return True
+            return False
+
+        # === area ===
+        if "area" in kinds_filter:
+            for a in self.store.list_collections(collection_type=AREA_TYPE):
+                matched: list[str] = []
+                if _hit(a.get("name")):
+                    matched.append("title")
+                if _hit(a.get("description")):
+                    matched.append("summary")
+                if _tag_hit(a.get("tags") or []):
+                    matched.append("tag")
+                if _hit(a.get("id")):
+                    matched.append("id")
+                if matched:
                     results.append({
-                        "id": d["id"],
-                        "title": d.get("content", "").split("\n")[0],
-                        "room_id": room["id"],
-                        "room_title": room["name"],
-                        "tags": d.get("tags", []),
-                        "doc_count": len(meta.get("docs", []) or []),
+                        "kind": "area",
+                        "id": a["id"],
+                        "title": a.get("name", ""),
+                        "matched_in": matched,
                     })
                     if len(results) >= limit:
                         return results
+
+        # === room ===
+        if "room" in kinds_filter:
+            for r in self.store.list_collections(collection_type=ROOM_TYPE):
+                meta = self._parse_meta(r)
+                matched: list[str] = []
+                if _hit(r.get("name")):
+                    matched.append("title")
+                if _hit(r.get("description")):
+                    matched.append("summary")
+                if _tag_hit(r.get("tags") or []):
+                    matched.append("tag")
+                if _hit(meta.get("room_key")):
+                    matched.append("room_key")
+                if _hit(r.get("id")):
+                    matched.append("id")
+                # 也搜 accepted_task_types
+                for tt in meta.get("accepted_task_types", []) or []:
+                    if _hit(tt):
+                        matched.append("task_type")
+                        break
+                if matched:
+                    results.append({
+                        "kind": "room",
+                        "id": r["id"],
+                        "title": r.get("name", ""),
+                        "room_key": meta.get("room_key"),
+                        "matched_in": matched,
+                    })
+                    if len(results) >= limit:
+                        return results
+
+        # === operation (包含 doc content) ===
+        if "operation" in kinds_filter:
+            rooms = self.store.list_collections(collection_type=ROOM_TYPE)
+            for room in rooms:
+                docs = self.store.list_documents(collection_id=room["id"], limit=1000)
+                for d in docs:
+                    content = d.get("content", "")
+                    meta = self._parse_meta(d)
+                    matched: list[str] = []
+                    # content 前 80 字常是 title
+                    if _hit(content):
+                        matched.append("title_or_summary")
+                    if _tag_hit(d.get("tags") or []):
+                        matched.append("tag")
+                    if _hit(d.get("id")):
+                        matched.append("id")
+                    # 搜 docs 正文（curl/rule/diagram 内容）
+                    for doc_item in meta.get("docs", []) or []:
+                        doc_content = doc_item.get("content", "") or ""
+                        doc_title = doc_item.get("title", "") or ""
+                        if _hit(doc_title):
+                            matched.append(f"doc.title[{doc_item.get('type', '?')}]")
+                        if _hit(doc_content):
+                            matched.append(f"doc.content[{doc_item.get('type', '?')}]")
+                    if matched:
+                        results.append({
+                            "kind": "operation",
+                            "id": d["id"],
+                            "title": content.split("\n")[0],
+                            "room_id": room["id"],
+                            "room_title": room.get("name", ""),
+                            "matched_in": matched,
+                            "doc_count": len(meta.get("docs", []) or []),
+                        })
+                        if len(results) >= limit:
+                            return results
+
         return results
 
     # ------------------------------------------------------------------
