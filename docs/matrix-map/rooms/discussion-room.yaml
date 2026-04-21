@@ -31,8 +31,8 @@ operations:
         title: 如必须用, 流程同 wide (仅 room_definition_id 换)
         language: bash
         content: |
-          curl -s -X POST "$URL/api/discussion/confirm-topic" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/confirm-topic" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{\"topic_id\":\"$TOPIC_ID\",\"room_definition_id\":\"discussion-room-v1\"}"

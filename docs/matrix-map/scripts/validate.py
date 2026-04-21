@@ -183,11 +183,14 @@ def validate_nodes(nodes: list[dict], live_keys: set[str], cfg: Config):
             elif parent not in all_ids:
                 errors.append(f"[E2] {nid}: parent='{parent}' 不存在")
 
-        # E6 room_key 必须在 live
+        # E6 room_key 必须在 live（虚拟 room 豁免，如 __platform__）
         if kind == "room":
             rk = n.get("room_key")
             if not rk:
                 errors.append(f"[E5] {nid}: room 节点必须有 room_key")
+            elif rk.startswith("__") and rk.endswith("__"):
+                # 虚拟 room (__platform__ 等): 装跨 room 的通用 op, 不对应 Matrix 真实 room
+                pass
             elif not cfg.validate.get("skip_live_check", False):
                 if rk not in live_keys:
                     errors.append(f"[E6] {nid}: room_key '{rk}' 不在 live/rooms.json")

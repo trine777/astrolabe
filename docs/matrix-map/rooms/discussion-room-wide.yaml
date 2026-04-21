@@ -30,8 +30,8 @@ operations:
           TOPIC_ID="topic-$(uuidgen | tr A-Z a-z)"
 
           # 1. 建 topic（内容不绑 session）
-          curl -s -X POST "$URL/api/discussion/create-topic" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/create-topic" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{
@@ -46,8 +46,8 @@ operations:
             }"
 
           # 2. 绑 room type + 建 session
-          curl -s -X POST "$URL/api/discussion/confirm-topic" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/confirm-topic" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{\"topic_id\":\"$TOPIC_ID\",\"room_definition_id\":\"discussion-room-wide-v1\"}"
@@ -79,8 +79,8 @@ operations:
           for PAIR in "chair|lamport" "expert|knuth" "expert|torvalds" \
                       "expert|miyamoto" "critic|schneier"; do
             ROLE=${PAIR%|*}; AGENT=${PAIR#*|}
-            curl -s -X POST "$URL/api/discussion/join-seat" \
-              -H "Authorization: Bearer $TOKEN" \
+            curl -s -X POST "$MATRIX_URL/api/discussion/join-seat" \
+              -H "Authorization: Bearer $MATRIX_TOKEN" \
               -H "X-Agent-ID: $AGENT" \
               -H "Content-Type: application/json" \
               -d "{\"session_id\":\"$SESSION\",\"seat_role\":\"$ROLE\"}"
@@ -89,9 +89,19 @@ operations:
       - type: rule
         title: Header 二选 - owner 用 X-Caller-ID, seat 用 X-Agent-ID
         content: |
-          D32 fix 之后区分:
-            owner 动作 (create-topic/confirm-topic/owner-action/resolve) → X-Caller-ID
-            seat 动作 (join-seat/speak/advance-phase/submit-confirmation) → X-Agent-ID
+          D32 fix 之后区分按"身份"而不是"动作":
+
+          用 X-Caller-ID (身份=owner, 无需 lease_id):
+            - create-topic / confirm-topic
+            - owner-action (含强制 resolve / cancel)
+
+          用 X-Agent-ID (身份=seat, 必须带 lease_id):
+            - join-seat / speak / advance-phase / submit-confirmation
+            - resolve (当由 chair 发起时, chair 本身是 seat)
+
+          注意: /api/discussion/resolve 是 chair 作为 seat 发起的收敛;
+                 /api/discussion/owner-action?action=resolve 才是 owner 强制.
+                 两者端点不同, header 也不同, 不要混淆.
           混用 → 所有人都被识别为 owner, 权限炸裂.
       - type: rule
         title: cardinality 限制
@@ -128,8 +138,8 @@ operations:
         language: bash
         content: |
           # 推进 (chair 用 lease_id)
-          curl -s -X POST "$URL/api/discussion/advance-phase" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/advance-phase" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Agent-ID: lamport" \
             -H "Content-Type: application/json" \
             -d "{\"session_id\":\"$SESSION\",
@@ -138,8 +148,8 @@ operations:
                  \"reason\":\"seats ready\"}"
 
           # 发言 (任意 seat, phase ∈ {exploring, narrowing, confirming} 才合法)
-          curl -s -X POST "$URL/api/discussion/speak" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/speak" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Agent-ID: $AGENT" \
             -H "Content-Type: application/json" \
             -d "{\"session_id\":\"$SESSION\",
@@ -166,8 +176,8 @@ operations:
         language: bash
         content: |
           # 每个 seat 提交 stance (phase=confirming)
-          curl -s -X POST "$URL/api/discussion/submit-confirmation" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/submit-confirmation" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Agent-ID: $AGENT" \
             -H "Content-Type: application/json" \
             -d "{\"session_id\":\"$SESSION\",
@@ -177,8 +187,8 @@ operations:
           # stance ∈ {agree, reserve, disagree}
 
           # chair resolve
-          curl -s -X POST "$URL/api/discussion/resolve" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/resolve" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Agent-ID: lamport" \
             -H "Content-Type: application/json" \
             -d "{\"session_id\":\"$SESSION\",\"lease_id\":\"$CHAIR_LEASE\"}"
@@ -186,8 +196,8 @@ operations:
         title: Owner 强制 resolve (phase=confirming/paused 时可用)
         language: bash
         content: |
-          curl -s -X POST "$URL/api/discussion/owner-action" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/owner-action" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{\"session_id\":\"$SESSION\",
@@ -197,8 +207,8 @@ operations:
         title: Owner 任意时刻 cancel (快速出口)
         language: bash
         content: |
-          curl -s -X POST "$URL/api/discussion/owner-action" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s -X POST "$MATRIX_URL/api/discussion/owner-action" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine" \
             -H "Content-Type: application/json" \
             -d "{\"session_id\":\"$SESSION\",
@@ -216,8 +226,8 @@ operations:
         title: get-session
         language: bash
         content: |
-          curl -s "$URL/api/discussion/get-session?session_id=$SESSION" \
-            -H "Authorization: Bearer $TOKEN" \
+          curl -s "$MATRIX_URL/api/discussion/get-session?session_id=$SESSION" \
+            -H "Authorization: Bearer $MATRIX_TOKEN" \
             -H "X-Caller-ID: trine"
           # 返回: {phase, round_count, speeches, seats, available_actions, resolution}
       - type: rule
