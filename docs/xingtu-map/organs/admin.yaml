@@ -1,0 +1,64 @@
+id: organ-xingtu-admin
+title: 系统治理
+kind: organ
+parent: area-xingtu-admin
+summary: 全局统计 / 事件审计 / 世界模型 / 数据库优化. 看整体状态.
+source: human
+verified_at: 2026-04-22
+verified_by: claude
+stale_days: 30
+module_path: src/xingtu/store.py
+tags: [xingtu, admin, observability]
+
+operations:
+  - id: op-xingtu-stats
+    kind: operation
+    title: 表行数统计
+    parent: organ-xingtu-admin
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 一键看库大小
+        language: bash
+        content: |
+          xingtu_get_stats()
+          # 返回 {collections, documents, relations, events, agent_memories,
+          #       universe_goals, universe_deltas, metrics, metric_results}
+
+  - id: op-xingtu-events
+    kind: operation
+    title: 审计事件流
+    parent: organ-xingtu-admin
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 过滤事件
+        language: bash
+        content: |
+          xingtu_get_events(
+            target_id=None,       # 按目标 ID
+            event_type=None,      # created | updated | deleted | searched | inferred | confirmed
+            limit=50
+          )
+      - type: rule
+        title: 事件是治理入口
+        content: |
+          追责 / 复盘 / 告警全靠事件. 写操作都自动 emit, 查时带筛选.
+          批量写: events.emit_batch([...]) 避免 N 次单写.
+
+  - id: op-xingtu-optimize
+    kind: operation
+    title: 数据库优化
+    parent: organ-xingtu-admin
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 压缩 + 清旧版本
+        language: bash
+        content: |
+          xingtu_optimize()
+          # LanceDB 的 compact_files + cleanup_old_versions
+          # 建议周期性跑 (每周 / 10 万写一次)

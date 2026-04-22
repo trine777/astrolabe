@@ -1,0 +1,56 @@
+id: organ-xingtu-memory
+title: Agent 记忆
+kind: organ
+parent: area-xingtu-trust-memory
+summary: 工作 / 情景 / 语义 / 程序 四类记忆 + importance 衰减 + 语义召回.
+source: human
+verified_at: 2026-04-22
+verified_by: claude
+stale_days: 30
+module_path: src/xingtu/__init__.py
+tags: [xingtu, memory]
+
+operations:
+  - id: op-xingtu-store-memory
+    kind: operation
+    title: 存记忆
+    parent: organ-xingtu-memory
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 调用
+        language: bash
+        content: |
+          xingtu_store_memory(
+            agent_id="trine",
+            content="记忆正文...",
+            memory_type="semantic",  # working | episodic | semantic | procedural
+            importance=0.8,
+            tags=["重要", "决议"]
+          )
+      - type: rule
+        title: memory_type 怎么选
+        content: |
+          working    : 工作记忆, 短期任务上下文 (会话结束可清)
+          episodic   : 情景记忆, "我什么时候做了什么" (带时间)
+          semantic   : 语义记忆, 事实 / 概念 / 决议 (本会话 3 条长期原则都是这类)
+          procedural : 程序记忆, 操作流程 / 步骤 (如"起讨论 7 步")
+
+  - id: op-xingtu-recall-memories
+    kind: operation
+    title: 召回记忆
+    parent: organ-xingtu-memory
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 语义召回
+        language: bash
+        content: |
+          xingtu_recall_memories(
+            agent_id="trine",
+            query="找什么",
+            memory_type=None,  # None = 全类型
+            limit=10
+          )

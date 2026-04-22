@@ -1,0 +1,109 @@
+id: organ-xingtu-documents
+title: 文档 (Document) 管理
+kind: organ
+parent: area-xingtu-storage
+summary: 文档 = 原子存储单元. 支持自定义 ID / 批量查 / 结构化过滤 / 导入文件.
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 30
+module_path: src/xingtu/store.py
+tags: [xingtu, document, storage]
+
+operations:
+  - id: op-xingtu-add-documents
+    kind: operation
+    title: 写文档 (支持自定义 ID)
+    parent: organ-xingtu-documents
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 批量写
+        language: bash
+        content: |
+          # MCP
+          xingtu_add_documents(
+            collection_id="<uuid>",
+            texts=["doc1 content", "doc2 content"],
+            document_ids=["ki-001", "ki-002"]  # 可选, 玄武用 ki-xxx 做共享键
+          )
+
+          # REST 见 /api/v1/documents
+      - type: rule
+        title: 自定义 ID 是 upsert
+        content: |
+          传 document_ids 时, 若 ID 已存在: 先删后加, 不会产生重复 (D25 决议).
+          不传 document_ids: 自动生成 UUID.
+          列表里某项是 None: 只该项用 UUID, 其他用提供的.
+
+  - id: op-xingtu-get-document
+    kind: operation
+    title: 单取 / 批取文档
+    parent: organ-xingtu-documents
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 单个 / 批量
+        language: bash
+        content: |
+          # 单个
+          xingtu_get_document(document_id="ki-001")
+
+          # 批量 (95K 条用单个要崩, 批量用这个)
+          xingtu_batch_get_documents(document_ids=["ki-001","ki-002","ki-003"])
+      - type: rule
+        title: 批量上限 1000
+        content: |
+          batch_get_documents 内建 dedup 和空字符串过滤.
+          超过 1000 会 WARN 并截断 (D32 fix 后加的).
+
+  - id: op-xingtu-query-documents
+    kind: operation
+    title: 结构化过滤查文档
+    parent: organ-xingtu-documents
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 按 tag / metadata / 时间范围
+        language: bash
+        content: |
+          xingtu_query_documents(
+            collection_id="<uuid>",
+            tags=["verified"],
+            metadata_filter='{"domain":"ai_research"}',  # JSON string
+            content_type="text",
+            created_after="2026-01-01T00:00:00Z",
+            limit=100,
+            offset=0
+          )
+      - type: rule
+        title: 低选择率过滤 fetch-loop
+        content: |
+          post-filter (tags/metadata) 走 fetch-until-satisfied loop,
+          最多 fetch 10000 条. 不会因为筛选太严返回残缺结果.
+
+  - id: op-xingtu-ingest-file
+    kind: operation
+    title: 导入文件 (CSV / JSON / PDF / TXT / 图片)
+    parent: organ-xingtu-documents
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 一行导入
+        language: bash
+        content: |
+          xingtu_ingest_file(
+            file_path="/path/to/data.csv",
+            collection_id=None  # 不传会自动建集合 (用文件名)
+          )
+      - type: rule
+        title: 大文件的坑
+        content: |
+          PDF 按页切 chunk (默认 chunk_size=512 字符).
+          图片存为 Document (content_type="image"), vector 是图片 embedding.
+          CSV 每行一条 Document, content 是所有列的 "key: value; ..." 拼接.

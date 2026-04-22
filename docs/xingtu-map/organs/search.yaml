@@ -1,0 +1,55 @@
+id: organ-xingtu-search
+title: 搜索
+kind: organ
+parent: area-xingtu-retrieval
+summary: 三种搜索 (向量/全文/混合) + 相似文档. hybrid 推荐默认.
+source: human
+verified_at: 2026-04-22
+verified_by: claude
+stale_days: 30
+module_path: src/xingtu/search.py
+tags: [xingtu, search]
+
+operations:
+  - id: op-xingtu-hybrid-search
+    kind: operation
+    title: 混合搜索 (默认)
+    parent: organ-xingtu-search
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 调用方式
+        language: bash
+        content: |
+          # MCP
+          xingtu_hybrid_search(query="...", collection_id=None, limit=10, reranker="rrf")
+
+          # REST
+          curl -X POST "http://localhost:8000/api/v1/search/hybrid" \
+            -d '{"query":"...","limit":10,"reranker":"rrf"}'
+      - type: rule
+        title: 三种搜索怎么选
+        content: |
+          hybrid_search  : 默认选这个. 向量 + 全文 RRF 重排. 适合模糊查询.
+          vector_search  : 纯语义, 查"跟 X 相关的"
+          text_search    : 纯关键词, 查术语 / 代码片段
+          find_similar   : 以文搜文 (给 doc_id)
+      - type: rule
+        title: embedding 前置条件
+        content: |
+          embedding provider=none 时向量全是零, 向量类搜索退化为随机.
+          配 sentence-transformers (BGE-M3) 或 openai 激活.
+
+  - id: op-xingtu-find-similar
+    kind: operation
+    title: 以文搜文
+    parent: organ-xingtu-search
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 给 doc_id, 取语义近邻
+        language: bash
+        content: |
+          xingtu_find_similar(document_id="ki-001", limit=10, collection_id=None)

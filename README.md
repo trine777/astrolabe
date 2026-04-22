@@ -71,6 +71,29 @@ python -m xingtu_mcp.server
 xingtu --help
 ```
 
+### Load the built-in maps (推荐, agent 友好)
+
+两份操作地图，让 agent 加载即知怎么用：
+
+```bash
+# Matrix 操作地图 (7 area / 11 room / 19 op / 42 docs) —— 外部 Matrix 系统的导航
+python3 scripts/import_matrix_map.py
+
+# 星图自述地图 (5 area / 8 organ / 19 op) —— 本系统自己能做什么
+python3 scripts/import_xingtu_map.py
+```
+
+调用：
+```python
+from xingtu import XingTuService
+svc = XingTuService(); svc.initialize()
+svc.matrix_map.overview()                            # 全图概览
+svc.matrix_map.find("discussion")                    # 关键词搜
+svc.matrix_map.get_operation("op-create-discussion") # 完整 curl + 规则
+```
+
+详见 [`docs/matrix-map/README.md`](docs/matrix-map/README.md) 和 [`docs/xingtu-map/README.md`](docs/xingtu-map/README.md)。
+
 ### Swift (macOS native app)
 
 ```bash

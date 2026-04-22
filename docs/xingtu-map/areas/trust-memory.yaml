@@ -1,0 +1,8 @@
+id: area-xingtu-trust-memory
+title: 信任与记忆
+kind: area
+summary: 五维信任评估 (来源/时效/交叉引用/确认/审计) + Agent 记忆 (工作/情景/语义/程序)。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [xingtu, trust, memory]

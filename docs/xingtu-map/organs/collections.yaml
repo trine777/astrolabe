@@ -1,0 +1,67 @@
+id: organ-xingtu-collections
+title: 集合 (Collection) 管理
+kind: organ
+parent: area-xingtu-storage
+summary: 集合 = 位面 / plane / area。存文档的容器。同名幂等。
+source: human
+synced_at: 2026-04-21
+verified_at: 2026-04-21
+verified_by: claude
+stale_days: 30
+module_path: src/xingtu/store.py
+tags: [xingtu, collection, storage]
+
+operations:
+  - id: op-xingtu-create-collection
+    kind: operation
+    title: 建集合
+    parent: organ-xingtu-collections
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: MCP / REST 两种入口
+        language: bash
+        content: |
+          # MCP (Claude Code)
+          xingtu_create_collection(name="my-data", description="...", collection_type="documents")
+
+          # REST
+          curl -X POST "http://localhost:8000/api/v1/collections" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"my-data","collection_type":"documents","tags":["proj-x"]}'
+      - type: rule
+        title: 同名幂等
+        content: |
+          同 tenant + 同 name 已有, 不会重复建, 返回已有那条. 这是 D32 之后的语义.
+          如果需要真建新的, 换 name.
+
+  - id: op-xingtu-list-collections
+    kind: operation
+    title: 列集合
+    parent: organ-xingtu-collections
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 筛选列表
+        language: bash
+        content: |
+          # MCP
+          xingtu_list_collections(status="draft", collection_type="documents")
+
+          # REST
+          curl "http://localhost:8000/api/v1/collections?collection_type=documents"
+
+  - id: op-xingtu-get-collection
+    kind: operation
+    title: 取单个集合
+    parent: organ-xingtu-collections
+    verified_at: 2026-04-21
+    verified_by: claude
+    docs:
+      - type: curl
+        title: by id
+        language: bash
+        content: |
+          xingtu_get_collection(collection_id="<uuid>")

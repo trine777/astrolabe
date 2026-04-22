@@ -133,41 +133,45 @@ def enrich_rooms_from_live(rooms: list[dict], live_by_key: dict[str, dict]) -> N
 
 def assemble_tree(
     areas: list[dict],
-    rooms: list[dict],
+    l2_nodes: list[dict],           # rooms + organs 混装
     cfg: Config,
 ) -> tuple[dict, list[str]]:
-    """组装树，返回 (tree, orphan_errors)."""
+    """组装树。L2 节点 (room/organ) 都挂在 area 下的同一 children 数组。
+
+    返回 (tree, orphan_errors).
+    """
     errors: list[str] = []
-    areas_by_id = {a["id"]: dict(a, rooms=[]) for a in areas if a.get("id")}
+    areas_by_id = {a["id"]: dict(a, children=[]) for a in areas if a.get("id")}
 
     orphans: list[str] = []
-    for room in rooms:
-        parent = room.get("parent")
+    for node in l2_nodes:
+        parent = node.get("parent")
         target = areas_by_id.get(parent) if parent else None
         if target:
-            target["rooms"].append(room)
+            target["children"].append(node)
         else:
+            kind = node.get("kind", "?")
+            key = node.get("room_key", node.get("id", "?"))
             orphans.append(
-                f"room '{room.get('id', '?')}' (key={room.get('room_key', '?')}) "
+                f"{kind} '{node.get('id', '?')}' (key={key}) "
                 f"parent='{parent or '<空>'}' 未对应任何 area"
             )
 
     # E2: orphan 默认阻断
     if orphans:
         if cfg.build.get("fail_on_orphan", True):
-            errors.extend(f"orphan room: {o}" for o in orphans)
+            errors.extend(f"orphan {kind}: {o}" for o in orphans)
         else:
-            # 降级：放兜底 area 里但打 warning（config 明确关掉才走这里）
             fake = {
                 "id": "__orphan__",
                 "title": "未归类 — 请人工归区",
                 "kind": "area",
-                "rooms": [],
+                "children": [],
             }
-            for room in rooms:
-                parent = room.get("parent")
+            for node in l2_nodes:
+                parent = node.get("parent")
                 if parent not in areas_by_id:
-                    fake["rooms"].append(room)
+                    fake["children"].append(node)
             areas_by_id["__orphan__"] = fake
 
     tree = {
@@ -204,10 +208,11 @@ def main():
 
     areas = load_yaml_dir(cfg.root / "areas")
     rooms = load_yaml_dir(cfg.root / "rooms")
+    organs = load_yaml_dir(cfg.root / "organs")
     live_by_key = load_live_rooms(cfg)
 
-    enrich_rooms_from_live(rooms, live_by_key)
-    tree, orphan_errors = assemble_tree(areas, rooms, cfg)
+    enrich_rooms_from_live(rooms, live_by_key)   # 只 enrich room, organ 无 Matrix live 对应
+    tree, orphan_errors = assemble_tree(areas, rooms + organs, cfg)
 
     if orphan_errors:
         for e in orphan_errors:
@@ -228,17 +233,15 @@ def main():
         print(f"✓ 已生成 {out_path.relative_to(cfg.root)}  sha256={digest}")
 
     area_cnt = len(tree["areas"])
-    room_cnt = sum(len(a.get("rooms", [])) for a in tree["areas"])
-    op_cnt = sum(
-        len(r.get("operations", []) or [])
-        for a in tree["areas"] for r in a.get("rooms", [])
-    )
+    all_children = [c for a in tree["areas"] for c in a.get("children", [])]
+    room_cnt = sum(1 for c in all_children if c.get("kind") == "room")
+    organ_cnt = sum(1 for c in all_children if c.get("kind") == "organ")
+    op_cnt = sum(len(c.get("operations", []) or []) for c in all_children)
     doc_cnt = sum(
         len((op.get("docs") or []))
-        for a in tree["areas"] for r in a.get("rooms", [])
-        for op in (r.get("operations") or [])
+        for c in all_children for op in (c.get("operations") or [])
     )
-    print(f"  areas={area_cnt}  rooms={room_cnt}  operations={op_cnt}  docs={doc_cnt}")
+    print(f"  areas={area_cnt}  rooms={room_cnt}  organs={organ_cnt}  operations={op_cnt}  docs={doc_cnt}")
     size_kb = len(raw) / 1024
     print(f"  size={size_kb:.1f} KB")
 
