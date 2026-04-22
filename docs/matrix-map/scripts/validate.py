@@ -33,8 +33,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config_loader import Config, load, print_env  # noqa: E402
 
 
-ALLOWED_KINDS = {"area", "room", "operation"}
+ALLOWED_KINDS = {"area", "room", "organ", "operation"}
 ALLOWED_DOC_TYPES = {"curl", "rule", "checklist", "diagram", "payload"}
+# L2 节点（room 或 organ）都可以做 operation 的 parent
+L2_KINDS = {"room", "organ"}
 
 
 def _is_placeholder(val) -> bool:
@@ -50,11 +52,11 @@ def _is_placeholder(val) -> bool:
 
 
 def load_all_nodes(cfg: Config) -> tuple[list[dict], list[tuple[str, str]]]:
-    """扫 areas/ 和 rooms/ 下所有 yaml，提取节点。返回 (nodes, parse_errors)."""
+    """扫 areas/ 和 rooms/ 和 organs/ 下所有 yaml，提取节点。返回 (nodes, parse_errors)."""
     nodes: list[dict] = []
     errs: list[tuple[str, str]] = []
 
-    for sub in ("areas", "rooms"):
+    for sub in ("areas", "rooms", "organs"):
         base = cfg.root / sub
         if not base.exists():
             continue
@@ -177,7 +179,7 @@ def validate_nodes(nodes: list[dict], live_keys: set[str], cfg: Config):
 
         # E2 parent 引用（V1: TODO/空串 → E5, 否则查引用）
         parent = n.get("parent")
-        if kind in ("room", "operation"):
+        if kind in ("room", "organ", "operation"):
             if _is_placeholder(parent):
                 errors.append(f"[E5] {nid}: kind={kind} 必须有 parent（当前为空/占位符）")
             elif parent not in all_ids:
@@ -224,17 +226,16 @@ def validate_nodes(nodes: list[dict], live_keys: set[str], cfg: Config):
                                 f"[W3] {nid}.docs[{i}]: curl 未见 'curl' 或 '-X'"
                             )
 
-        # V2/V3: area/room 必须有子节点
+        # V2/V3: area 必须有 room 或 organ 子节点；room/organ 必须有 operation 子节点
         if kind == "area":
             kids = children_by_parent.get(nid, [])
-            if not any(c.get("kind") == "room" for c in kids):
-                warnings.append(f"[W4] area '{nid}': 无任何 room 子节点")
-        elif kind == "room":
+            if not any(c.get("kind") in L2_KINDS for c in kids):
+                warnings.append(f"[W4] area '{nid}': 无任何 room/organ 子节点")
+        elif kind in L2_KINDS:
             kids = children_by_parent.get(nid, [])
-            # operations 可能在同一 yaml 里内联，也可能是独立节点
             has_op = any(c.get("kind") == "operation" for c in kids)
             if not has_op:
-                warnings.append(f"[W4] room '{nid}': 无任何 operation 子节点")
+                warnings.append(f"[W4] {kind} '{nid}': 无任何 operation 子节点")
 
         # W1 verified_at 过期
         verified = parse_date(n.get("verified_at"))

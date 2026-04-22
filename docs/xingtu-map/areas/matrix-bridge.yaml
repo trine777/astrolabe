@@ -1,0 +1,8 @@
+id: area-xingtu-matrix-bridge
+title: Matrix 地图子系统
+kind: area
+summary: 星图承载的 Matrix 操作地图 — 让任何 Agent 加载地图即知 Matrix 怎么用。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [xingtu, matrix-map, bridge]

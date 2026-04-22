@@ -1,0 +1,48 @@
+id: organ-xingtu-trust
+title: 信任评估
+kind: organ
+parent: area-xingtu-trust-memory
+summary: 五维加权评分 (源权威 25% / 时效 20% / 交叉引用 20% / 确认 20% / 审计 15%). 缺证据用中立值 0.5.
+source: human
+verified_at: 2026-04-22
+verified_by: claude
+stale_days: 30
+module_path: src/xingtu/__init__.py
+tags: [xingtu, trust]
+
+operations:
+  - id: op-xingtu-evaluate-trust
+    kind: operation
+    title: 单条信任评估
+    parent: organ-xingtu-trust
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: curl
+        title: 调用
+        language: bash
+        content: |
+          # 返回: {item_id, item_type, trust_score, confidence, flags, reasoning, dimensions}
+          xingtu_evaluate_trust(item_id="ki-001")
+
+          # 批量版 (按条独立 try/except, 不会一个错全崩)
+          xingtu_batch_evaluate_trust(item_ids=["ki-001","ki-002",...])
+      - type: rule
+        title: 五维权重
+        content: |
+          source_authority   25%  (来源 URI / user vs ai 创建)
+          freshness          20%  (age_days < 180 为佳)
+          cross_reference    20%  (有多少 relation 指向/出自, AI 推断打 5 折)
+          confirmation       20%  (有无 confirmed 事件)
+          audit_coverage     15%  (events 条数)
+      - type: rule
+        title: flags 解读
+        content: |
+          trust 输出的 flags 是告警集合:
+            unverified_source  没 source_uri
+            stale              > 180 天
+            isolated           无任何关系
+            unconfirmed        无人工确认事件
+            no_audit_trail     无任何事件
+            not_found          item_id 不存在
+            evaluation_error   批量时某条报错

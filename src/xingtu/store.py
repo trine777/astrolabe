@@ -94,16 +94,26 @@ class XingkongzuoStore:
     # ------------------------------------------------------------------
 
     def get_collection_by_name(
-        self, name: str, tenant_id: str = "default"
+        self,
+        name: str,
+        tenant_id: str = "default",
+        collection_type: Optional[str] = None,
     ) -> Optional[dict]:
-        """Find a collection by name within a tenant. Returns first match or None."""
+        """Find a collection by (name, tenant, [collection_type]). Returns first match or None.
+
+        If collection_type is given, only matches that type. 这允许不同 type 下同名
+        (如 map_area '系统治理' 和 map_organ '系统治理' 共存).
+        """
         table = self.get_table("collections")
+        conditions = [
+            f"name = '{_esc(name)}'",
+            f"tenant_id = '{_esc(tenant_id)}'",
+        ]
+        if collection_type:
+            conditions.append(f"collection_type = '{_esc(collection_type)}'")
         results = (
             table.search()
-            .where(
-                f"name = '{_esc(name)}' AND tenant_id = '{_esc(tenant_id)}'",
-                prefilter=True,
-            )
+            .where(" AND ".join(conditions), prefilter=True)
             .limit(1)
             .to_list()
         )
@@ -120,9 +130,14 @@ class XingkongzuoStore:
         metadata_json: Optional[str] = None,
         tenant_id: str = "default",
     ) -> dict:
-        """Create a new collection. Returns existing if same name exists (idempotent)."""
-        # 幂等：同名同租户集合直接返回已有的
-        existing = self.get_collection_by_name(name, tenant_id=tenant_id)
+        """Create a new collection. Returns existing if (name, tenant, type) matches.
+
+        幂等键: (name, tenant_id, collection_type). 不同 type 下可同名
+        (如 area + organ 用同一 title 不冲突).
+        """
+        existing = self.get_collection_by_name(
+            name, tenant_id=tenant_id, collection_type=collection_type,
+        )
         if existing:
             return {k: v for k, v in existing.items() if not k.startswith("_")}
 

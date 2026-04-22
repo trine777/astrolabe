@@ -1,0 +1,8 @@
+id: area-xingtu-retrieval
+title: 检索导航
+kind: area
+summary: 向量/全文/混合搜索 + 分层投影 (L0-L3) + 交叉引用。星图的"找"字能力。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [xingtu, search, projection]

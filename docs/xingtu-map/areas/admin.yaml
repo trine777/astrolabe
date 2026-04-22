@@ -1,0 +1,8 @@
+id: area-xingtu-admin
+title: 系统治理
+kind: area
+summary: 全局统计 / 审计事件 / 世界模型 / 数据库优化。看系统整体状态。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [xingtu, admin, observability]

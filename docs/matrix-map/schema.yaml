@@ -27,26 +27,36 @@ node:
 # ------------------------------------------------------------------
 kind_rules:
   area:
-    # L1 Area 节点（如 "讨论决议"、"开发迭代"）
+    # L1 Area 节点（分类容器）
     must_have_children: true
-    children_kind: [room]
+    children_kind: [room, organ]     # L2 可以是 room 或 organ
     parent: null
 
   room:
-    # L2 Room 节点（对应 Matrix 的 room_key）
+    # L2 Room 节点 — Matrix 侧语义: 多 agent 协作房间 (对应 Matrix room_key)
     must_have_children: true
     children_kind: [operation]
     parent_kind: area
     extra_required:
-      - room_key      # 必须匹配 live/rooms.json 中的一项
+      - room_key      # 必须匹配 live/rooms.json 中的一项 (虚拟 room 以 __ 开头结尾豁免)
     extra_optional:
       - room_version
       - accepted_task_types
 
+  organ:
+    # L2 Organ 节点 — 星图侧语义: 功能模块 / 五器官 (不对应 Matrix room)
+    # 例如 collections / documents / search — 星图自身能力的分组
+    must_have_children: true
+    children_kind: [operation]
+    parent_kind: area
+    extra_required: []
+    extra_optional:
+      - module_path   # 对应的 Python 模块路径 (如 src/xingtu/search.py)
+
   operation:
-    # L3 操作节点（如 "起一个讨论"）
+    # L3 操作节点（具体可调用的工具 / API / curl）
     must_have_children: false
-    parent_kind: room
+    parent_kind: [room, organ]       # operation 可挂在 room 或 organ 下
     extra_required:
       - docs          # 必须 1-3 个文档
     docs_constraint:

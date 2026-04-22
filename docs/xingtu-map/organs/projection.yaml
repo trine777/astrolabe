@@ -1,0 +1,47 @@
+id: organ-xingtu-projection
+title: 分层投影 (L0-L3)
+kind: organ
+parent: area-xingtu-retrieval
+summary: Agent 不用一次看全部. L0 世界 → L1 位面 → L2 实体 → L3 关系图. 每层 token 可控.
+source: human
+verified_at: 2026-04-22
+verified_by: claude
+stale_days: 30
+module_path: src/xingtu/__init__.py
+tags: [xingtu, projection]
+
+operations:
+  - id: op-xingtu-projection-walk
+    kind: operation
+    title: L0-L3 渐进导航
+    parent: organ-xingtu-projection
+    verified_at: 2026-04-22
+    verified_by: claude
+    docs:
+      - type: rule
+        title: 四层定位
+        content: |
+          L0: 位面索引     ~200 tokens   "有哪些域?"         xingtu_projection_l0(limit=20)
+          L1: 位面概览     ~500 tokens   "这个域有什么实体?"  xingtu_projection_l1(collection_id, limit=30)
+          L2: 实体详情     ~200 tokens   "这个实体有什么?"    xingtu_projection_l2(document_id)
+          L3: 关系图       ~300 tokens   "实体怎么连?"       xingtu_projection_l3(source_id?, target_id?, type?)
+      - type: curl
+        title: L0 → L1 → L2 典型路径
+        language: bash
+        content: |
+          # 1. 看有哪些位面
+          xingtu_projection_l0(limit=20)
+
+          # 2. 挑一个进去
+          xingtu_projection_l1(collection_id="<id>", limit=30)
+
+          # 3. 看某个实体细节
+          xingtu_projection_l2(document_id="<doc_id>")
+
+          # 4. (可选) 看这实体的关系
+          xingtu_projection_l3(source_id="<doc_id>", limit=50)
+      - type: rule
+        title: 悬空边
+        content: |
+          L3 返回包含 dangling_count, 对应 source/target 已删除的边.
+          生产里要定期清理 (dangling > 0 是治理信号).

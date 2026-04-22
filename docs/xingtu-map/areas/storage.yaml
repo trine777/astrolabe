@@ -1,0 +1,8 @@
+id: area-xingtu-storage
+title: 数据存储
+kind: area
+summary: 集合 / 文档 / 导入 / 关系。星图的"存"字能力，写进 LanceDB 的入口。
+source: human
+verified_at: 2026-04-21
+verified_by: claude
+tags: [xingtu, storage, crud]

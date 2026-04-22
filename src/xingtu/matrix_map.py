@@ -29,8 +29,10 @@ logger = logging.getLogger(__name__)
 
 # collection_type 常量
 AREA_TYPE = "map_area"
-ROOM_TYPE = "map_room"
+ROOM_TYPE = "map_room"     # Matrix room (多 agent 协作单元)
+ORGAN_TYPE = "map_organ"   # 星图功能模块 (五器官概念, 非 Matrix room)
 MAP_TAG = "map"
+L2_TYPES = (ROOM_TYPE, ORGAN_TYPE)
 
 # 关系类型（复用 RelationType 允许的值，加新枚举也行）
 REL_CONTAINS = "contains"
@@ -190,10 +192,64 @@ class MatrixMapService:
         )
         return result
 
+    def register_organ(
+        self,
+        organ_id: str,
+        parent_area_id: str,
+        title: str,
+        summary: str = "",
+        module_path: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+        extra_metadata: Optional[dict] = None,
+        tenant_id: str = "default",
+    ) -> dict:
+        """注册 Organ (星图功能模块, 非 Matrix room), 自动建 Area→Organ 的 contains 边."""
+        parent = self.store.get_collection(parent_area_id)
+        if not parent:
+            raise ValueError(f"parent area not found: {parent_area_id}")
+
+        meta = {
+            "module_path": module_path,
+            **(extra_metadata or {}),
+        }
+        merged_tags = list({MAP_TAG, "organ", *(tags or [])})
+
+        existing = self.store.get_collection(organ_id)
+        if existing:
+            result = self.store.update_collection(
+                organ_id,
+                description=summary,
+                tags=merged_tags,
+                metadata_json=json.dumps(meta, ensure_ascii=False, default=str),
+            )
+            event = "updated"
+        else:
+            result = self.store.create_collection(
+                id=organ_id,
+                name=title,
+                description=summary,
+                collection_type=ORGAN_TYPE,
+                tags=merged_tags,
+                created_by="map-register",
+                metadata_json=json.dumps(meta, ensure_ascii=False, default=str),
+                tenant_id=tenant_id,
+            )
+            event = "created"
+
+        self._ensure_relation(parent_area_id, organ_id, REL_CONTAINS)
+
+        self.events.emit(
+            event_type=event,
+            target_type="collection",
+            target_id=organ_id,
+            description=f"map_organ: {title} (parent={parent_area_id})",
+        )
+        return result
+
     def register_operation(
         self,
         operation_id: str,
-        parent_room_id: str,
+        parent_room_id: str,          # 兼容: 既可传 room_id 也可传 organ_id
         title: str,
         docs: list[dict],
         summary: str = "",
@@ -205,18 +261,25 @@ class MatrixMapService:
         tenant_id: str = "default",
     ) -> dict:
         """
-        注册 Operation（作为 Document 存在 room collection 下）。
+        注册 Operation (作为 Document 存在 parent L2 节点的 collection 下).
 
         Args:
+            parent_room_id: L2 节点 id (可以是 room 或 organ)
             docs: [{type, title, content, language?}, ...] 1-3 条
-            references: 外部节点 id 列表，自动建 references 边
+            references: 外部节点 id 列表, 自动建 references 边
         """
         if not (1 <= len(docs) <= 3):
             raise ValueError(f"operation {operation_id} docs 数必须 1-3，当前 {len(docs)}")
 
         parent = self.store.get_collection(parent_room_id)
         if not parent:
-            raise ValueError(f"parent room not found: {parent_room_id}")
+            raise ValueError(f"parent (room/organ) not found: {parent_room_id}")
+        parent_type = parent.get("collection_type")
+        if parent_type not in L2_TYPES:
+            raise ValueError(
+                f"parent {parent_room_id} is {parent_type}, "
+                f"必须是 {ROOM_TYPE} 或 {ORGAN_TYPE}"
+            )
 
         metadata = {
             "kind": "operation",
@@ -321,18 +384,28 @@ class MatrixMapService:
     # ------------------------------------------------------------------
 
     def overview(self, tenant_id: str = "default") -> dict:
-        """顶层概览：所有 area + 每个下辖 room 数量。"""
+        """顶层概览: 所有 area + 每个下辖 room/organ 数量."""
         areas_raw = self.store.list_collections(
             collection_type=AREA_TYPE, tenant_id=tenant_id,
         )
         areas = []
         total_rooms = 0
+        total_organs = 0
         total_ops = 0
         for a in areas_raw:
-            rooms = self.store.get_relations(source_id=a["id"], relation_type=REL_CONTAINS)
-            room_count = len(rooms)
+            l2_rels = self.store.get_relations(source_id=a["id"], relation_type=REL_CONTAINS)
+            room_count = 0
+            organ_count = 0
             op_count = 0
-            for r in rooms:
+            for r in l2_rels:
+                child = self.store.get_collection(r["target_id"])
+                if not child:
+                    continue
+                ct = child.get("collection_type")
+                if ct == ROOM_TYPE:
+                    room_count += 1
+                elif ct == ORGAN_TYPE:
+                    organ_count += 1
                 op_count += len(
                     self.store.get_relations(
                         source_id=r["target_id"], relation_type=REL_CONTAINS,
@@ -344,14 +417,17 @@ class MatrixMapService:
                 "summary": a.get("description", ""),
                 "tags": a.get("tags", []),
                 "room_count": room_count,
+                "organ_count": organ_count,
                 "operation_count": op_count,
             })
             total_rooms += room_count
+            total_organs += organ_count
             total_ops += op_count
 
         result = {
             "area_count": len(areas),
             "room_count": total_rooms,
+            "organ_count": total_organs,
             "operation_count": total_ops,
             "areas": sorted(areas, key=lambda x: x["id"]),
         }
@@ -365,25 +441,35 @@ class MatrixMapService:
         return result
 
     def enter_area(self, area_id: str) -> dict:
-        """进入某 Area，看下辖 room 列表。"""
+        """进入某 Area, 看下辖 room/organ 列表 (分开返回)."""
         area = self.store.get_collection(area_id)
         if not area:
             return {"error": f"area not found: {area_id}"}
 
-        room_rels = self.store.get_relations(source_id=area_id, relation_type=REL_CONTAINS)
+        child_rels = self.store.get_relations(source_id=area_id, relation_type=REL_CONTAINS)
         rooms = []
-        for r in room_rels:
-            room = self.store.get_collection(r["target_id"])
-            if not room:
+        organs = []
+        for r in child_rels:
+            child = self.store.get_collection(r["target_id"])
+            if not child:
                 continue
-            meta = self._parse_meta(room)
-            rooms.append({
-                "id": room["id"],
-                "title": room["name"],
-                "summary": room.get("description", ""),
-                "room_key": meta.get("room_key"),
-                "accepted_task_types": meta.get("accepted_task_types", []),
-            })
+            meta = self._parse_meta(child)
+            ct = child.get("collection_type")
+            if ct == ROOM_TYPE:
+                rooms.append({
+                    "id": child["id"],
+                    "title": child["name"],
+                    "summary": child.get("description", ""),
+                    "room_key": meta.get("room_key"),
+                    "accepted_task_types": meta.get("accepted_task_types", []),
+                })
+            elif ct == ORGAN_TYPE:
+                organs.append({
+                    "id": child["id"],
+                    "title": child["name"],
+                    "summary": child.get("description", ""),
+                    "module_path": meta.get("module_path"),
+                })
 
         return {
             "area": {
@@ -393,6 +479,7 @@ class MatrixMapService:
                 "tags": area.get("tags", []),
             },
             "rooms": sorted(rooms, key=lambda x: x["id"]),
+            "organs": sorted(organs, key=lambda x: x["id"]),
         }
 
     def get_room(self, room_id: str) -> dict:
@@ -419,18 +506,32 @@ class MatrixMapService:
         parent_rels = self.store.get_relations(target_id=room_id, relation_type=REL_CONTAINS)
         parent_area_id = parent_rels[0]["source_id"] if parent_rels else None
 
+        # 兼容 room 和 organ 两种 L2 类型 (collection_type 不同, 其他结构一样)
+        ct = room.get("collection_type")
+        is_organ = ct == ORGAN_TYPE
+        node_info = {
+            "id": room["id"],
+            "title": room["name"],
+            "summary": room.get("description", ""),
+            "tags": room.get("tags", []),
+            "parent_area_id": parent_area_id,
+            "kind": "organ" if is_organ else "room",
+        }
+        if is_organ:
+            node_info["module_path"] = meta.get("module_path")
+        else:
+            node_info["room_key"] = meta.get("room_key")
+            node_info["accepted_task_types"] = meta.get("accepted_task_types", [])
+
         return {
-            "room": {
-                "id": room["id"],
-                "title": room["name"],
-                "summary": room.get("description", ""),
-                "room_key": meta.get("room_key"),
-                "accepted_task_types": meta.get("accepted_task_types", []),
-                "tags": room.get("tags", []),
-                "parent_area_id": parent_area_id,
-            },
+            ("organ" if is_organ else "room"): node_info,
             "operations": sorted(operations, key=lambda x: x["id"]),
         }
+
+    # 别名: 语义更清晰, 内部复用 get_room
+    def get_organ(self, organ_id: str) -> dict:
+        """取 Organ 详情 (星图功能模块). 内部同 get_room, 返回 kind 标记为 organ."""
+        return self.get_room(organ_id)
 
     def get_operation(self, operation_id: str) -> dict:
         """Operation 详情（含 docs 正文）。"""
@@ -526,7 +627,7 @@ class MatrixMapService:
         q_parts = {p for p in _split_tokens(q) if p}
         q_all = {q, *q_parts}
 
-        kinds_filter = set(kinds or ["area", "room", "operation"])
+        kinds_filter = set(kinds or ["area", "room", "organ", "operation"])
         results: list[dict] = []
 
         def _hit(text: str | None) -> bool:
@@ -594,10 +695,39 @@ class MatrixMapService:
                     if len(results) >= limit:
                         return results
 
-        # === operation (包含 doc content) ===
+        # === organ ===
+        if "organ" in kinds_filter:
+            for o in self.store.list_collections(collection_type=ORGAN_TYPE):
+                meta = self._parse_meta(o)
+                matched: list[str] = []
+                if _hit(o.get("name")):
+                    matched.append("title")
+                if _hit(o.get("description")):
+                    matched.append("summary")
+                if _tag_hit(o.get("tags") or []):
+                    matched.append("tag")
+                if _hit(meta.get("module_path")):
+                    matched.append("module_path")
+                if _hit(o.get("id")):
+                    matched.append("id")
+                if matched:
+                    results.append({
+                        "kind": "organ",
+                        "id": o["id"],
+                        "title": o.get("name", ""),
+                        "module_path": meta.get("module_path"),
+                        "matched_in": matched,
+                    })
+                    if len(results) >= limit:
+                        return results
+
+        # === operation (包含 doc content, 扫 room + organ 下的 Document) ===
         if "operation" in kinds_filter:
-            rooms = self.store.list_collections(collection_type=ROOM_TYPE)
-            for room in rooms:
+            l2_containers = (
+                list(self.store.list_collections(collection_type=ROOM_TYPE))
+                + list(self.store.list_collections(collection_type=ORGAN_TYPE))
+            )
+            for room in l2_containers:
                 docs = self.store.list_documents(collection_id=room["id"], limit=1000)
                 for d in docs:
                     content = d.get("content", "")
