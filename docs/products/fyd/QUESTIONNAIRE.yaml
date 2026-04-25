@@ -1,0 +1,163 @@
+# FYD 资源问卷 v0.1 — 议会输入数据
+# 用户填完即生成 user_profile, 喂给议会
+# 设计原则:
+#   - 20 题以内 (10-15 分钟填完)
+#   - AI 引导填写 (不是干 form), 用户半被动
+#   - 答案不要选项化, 留 free-text 给 user 表达
+#   - 必答 vs 可跳过分明
+
+version: 0.1
+total_questions: 20
+estimated_minutes: 12
+
+sections:
+  - id: section_who
+    title: "你是谁 (4 题)"
+    questions:
+      - id: q1
+        text: "用一句话介绍你自己 (角色 / 工作背景 / 现状)"
+        type: free_text
+        required: true
+        ai_followup: "如果太短, AI 追问: 你主要工作是什么? 副业目前在做吗?"
+
+      - id: q2
+        text: "你能投入多少时间到副业? (每周小时数 + 持续多久不影响生活)"
+        type: free_text
+        required: true
+        example: "10h/周, 6 个月内 OK"
+
+      - id: q3
+        text: "启动资金上限是多少? (能亏不心痛的金额)"
+        type: free_text
+        required: true
+        example: "\$500 / 1 万 / 完全不能亏"
+
+      - id: q4
+        text: "你在哪些社区/圈子有人? (能 cold message 不被拉黑的)"
+        type: free_text
+        required: false
+        example: "加密 TG 群 / 行业 Slack / Reddit / Twitter 1k 粉"
+
+  - id: section_skills
+    title: "你能做什么 (5 题)"
+    questions:
+      - id: q5
+        text: "你最强的 3 个硬技能 (能让别人付钱的)"
+        type: free_text
+        required: true
+        example: "Python 后端 / 加密协议 / SaaS 架构"
+
+      - id: q6
+        text: "你最强的 1 个软技能 (沟通/写作/带人/谈判)"
+        type: free_text
+        required: true
+
+      - id: q7
+        text: "你做过的最骄傲的 1-3 件事 (技术 / 项目 / 工作)"
+        type: free_text
+        required: true
+
+      - id: q8
+        text: "你身边能调用的资源 (代码仓库 / 数据 / 社群 / 朋友)"
+        type: free_text
+        required: false
+        ai_followup: "如果用户答 nothing, 引导: 你 GitHub 有什么? 学校老师/前同事能联系吗?"
+
+      - id: q9
+        text: "你会做但不喜欢做的事 (这是约束信号)"
+        type: free_text
+        required: false
+        example: "Sales / 内容运营 / 客服"
+
+  - id: section_motivation
+    title: "你想要什么 (4 题)"
+    questions:
+      - id: q10
+        text: "你做副业的真实动机 (\$ / 自由 / 影响力 / 学习 / 其他)"
+        type: free_text
+        required: true
+        ai_followup: "如果说\$, 追问: 月入多少算够? \$1k? \$10k?"
+
+      - id: q11
+        text: "12 个月后你希望成为什么样的人?"
+        type: free_text
+        required: true
+
+      - id: q12
+        text: "你最怕的失败是什么? (面子 / 钱 / 时间 / 健康 / 关系)"
+        type: free_text
+        required: true
+
+      - id: q13
+        text: "你绝对不做的方向 (法律 / 道德 / 兴趣)"
+        type: free_text
+        required: true
+        example: "陪伴 / 赌博 / 成人 / 多层级销售"
+
+  - id: section_landscape
+    title: "你的市场 (4 题)"
+    questions:
+      - id: q14
+        text: "如果不做副业, 你会付钱给什么 AI 工具/服务? (这暗示你看到的市场)"
+        type: free_text
+        required: true
+
+      - id: q15
+        text: "你身边的人付钱给什么? (朋友/同事的真消费习惯)"
+        type: free_text
+        required: false
+
+      - id: q16
+        text: "你过去 3 个月持续抱怨的问题 (这是真痛点信号)"
+        type: free_text
+        required: true
+
+      - id: q17
+        text: "你曾尝试做但放弃的副业 (项目 + 失败原因)"
+        type: free_text
+        required: false
+        importance: "highest"  # 这题极重要 — 能判断用户的反复模式
+
+  - id: section_constraints
+    title: "硬约束 (3 题)"
+    questions:
+      - id: q18
+        text: "你能匿名运营吗? 还是要用真名 (履历/品牌)"
+        type: select
+        options: ["完全匿名 OK", "想真名但能匿名", "必须真名 (品牌资产)"]
+        required: true
+
+      - id: q19
+        text: "你能心硬做 user retention / 上瘾设计吗? 还是需要价值观清白"
+        type: select
+        options: ["心硬 OK", "中性", "必须价值观清白"]
+        required: true
+
+      - id: q20
+        text: "你 6 个月内必须见到第一笔收入吗? 还是能等更久"
+        type: select
+        options: ["3 个月内必须", "6 个月内必须", "12 个月内", "无所谓"]
+        required: true
+
+# AI 引导规则
+ai_guidance:
+  pacing: "每答 1 题 AI 给 1 句反馈 (类似 Tally 但更像聊天)"
+  followup_threshold: "答案 < 20 字时 AI 追问"
+  encouragement: "答到第 10 题时 AI 给中场鼓励"
+  privacy_assurance: "明示: 答案只用于本次议会, Trine 本人也看不到 (隐私)"
+
+output_to_council:
+  schema: |
+    user_profile:
+      who: { role, time_budget, capital, communities }
+      skills: { hard, soft, proud_things, resources, dislikes }
+      motivation: { goal, vision, fears, never_do }
+      landscape: { paid_tools, peers_buy, complaints, failed_attempts }
+      constraints: { anonymity, ethics, time_runway }
+  format: yaml + 1 page summary
+  council_prompt_template: |
+    Below is the user_profile. 你们是 5 seat 议会, 任务是给这位独立开发者
+    3-5 个候选业务方向. 每个候选必须含 pros/cons/validation_steps/4w_milestone.
+    Critic seat 必须真反对至少 1 个候选, 不能皆同意.
+    严格不允许"你应该做 X"措辞.
+    最终输出格式见 COUNCIL_SCHEMA.yaml output_format.
