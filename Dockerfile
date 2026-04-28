@@ -16,7 +16,7 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --target=/install ".[mcp,cli]"
+    pip install --no-cache-dir --target=/install ".[mcp,cli,api]"
 
 # ===== Stage 2: Runtime =====
 FROM python:3.11-slim

@@ -165,7 +165,7 @@ def register_via_http(
     def post(path: str, body: dict) -> dict:
         req = urllib.request.Request(
             f"{url.rstrip('/')}{path}",
-            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+            data=json.dumps(body, ensure_ascii=False, default=str).encode("utf-8"),
             headers={"Content-Type": "application/json", "X-Tenant-ID": tenant},
         )
         with urllib.request.urlopen(req, timeout=30) as r:
