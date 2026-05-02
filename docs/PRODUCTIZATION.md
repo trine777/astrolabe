@@ -2,15 +2,20 @@
 
 ## Context
 
-Astrolabe (星图) 当前是一个 **元数据可靠层原型**，具备存储、搜索、信任评估、血缘关系的核心能力，但离产品化还有显著差距。用 Docker 世界模型推演：核心引擎相当于 `runc` 已就绪，但 `dockerd`（服务化外壳）、`registry`（资产目录）、`network`（通信层）均为零。
+Astrolabe (星图) 当前是一个 **元数据可靠层原型**，具备存储、搜索、信任评估、血缘关系的核心能力。
 
-本方案定义 Astrolabe 从原型到产品的完整技术路径，分 4 个 Phase 渐进交付，每个 Phase 独立可部署、独立可验证。
+> **定位约束 (2026-04-29 修正)**: 主路径是 **Python lib import** (`from xingtu import XingTuService`)，REST/Docker 是**给跨语言客户端的 Adapter**，不是产品核心定位。详见 [`POSITIONING.md`](POSITIONING.md)。本方案的 Phase 0 是 Adapter 形态实施，**不强制**所有用户走这条路 — 同语言同进程的客户应直接 lib import。
+
+本方案定义 Astrolabe Adapter 形态从原型到产品的完整技术路径，分 4 个 Phase 渐进交付，每个 Phase 独立可部署、独立可验证。
 
 ---
 
-## Phase 0: 服务化底座 (dockerd)
+## Phase 0: Matrix REST Adapter (可选)
 
-> 目标：让星图从"一个 Python 库"变成"一个可被 Matrix Area 挂载的独立服务"
+> 目标：让星图除了 "Python 库" 形态外，也能 "作为 REST 服务被 Matrix (Go) 等跨语言客户端调用"。
+>
+> **谁需要这条路径**: Matrix Go / 浏览器 / TypeScript / 任何非同进程 Python 客户端。
+> **谁不需要**: FYD 等同进程 Python 项目 — 直接 lib import。
 
 ### 0.1 HTTP API 网关
 
