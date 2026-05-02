@@ -10,7 +10,7 @@ import logging
 from fastapi import FastAPI
 
 from .middleware.auth import AuthMiddleware
-from .routes import collections, documents, search, ingest, metrics, trust, system, matrix_map
+from .routes import collections, documents, search, ingest, metrics, trust, system, matrix_map, observability
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ app.include_router(metrics.router, prefix="/api/v1", tags=["metrics"])
 app.include_router(trust.router, prefix="/api/v1", tags=["trust"])
 app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(matrix_map.router, prefix="/api/v1")
+app.include_router(observability.router, prefix="/api/v1", tags=["observability"])
 
 
 @app.get("/health")
