@@ -96,40 +96,54 @@ class TestMetricsEndpoint:
 
 
 class TestDashboard:
+    """Dashboard 只展示 9 项基建 (8 L1 + api_error_rate). FYD 8 项业务指标
+    不在此 dashboard, 但仍出现在 /metrics JSON (lib all_metrics 不变)."""
+
     def test_html_response(self, client):
         resp = client.get("/api/v1/observability/dashboard")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/html")
         body = resp.text
         assert "Astrolabe Observability" in body
-        assert "L3 价值层" in body
-        assert "L2 体验层" in body
-        assert "L1 容量层" in body
+        assert "API 健康" in body
+        assert "L1 基建容量" in body
+
+    def test_fyd_metrics_excluded_from_dashboard(self, client):
+        """FYD 业务指标不在 dashboard 渲染."""
+        resp = client.get("/api/v1/observability/dashboard")
+        body = resp.text
+        assert "L3 价值层" not in body
+        assert "W12 完成率" not in body
+        assert "议会发言质量" not in body
+        assert "付费转化率" not in body
+
+    def test_infra_metrics_in_dashboard(self, client):
+        """9 项基建指标都在 dashboard."""
+        resp = client.get("/api/v1/observability/dashboard")
+        body = resp.text
+        for name in [
+            "api_error_rate",
+            "api_read_p95", "api_write_p95",
+            "embedding_p95", "lancedb_query_p95",
+            "disk_usage", "embedding_provider_uptime",
+            "auth_failure_rate", "active_clients_30d",
+        ]:
+            assert name in body, f"missing {name} in dashboard"
 
     def test_no_data_renders_na(self, client):
-        """空数据库下大部分指标应显示 N/A 不是 FAIL."""
+        """空数据库下大部分指标显示 N/A. active_clients_30d=0 例外: 直接 FAIL."""
         resp = client.get("/api/v1/observability/dashboard")
         body = resp.text
-        # 大部分 N/A
         assert "N/A" in body
-        # active_clients_30d 例外: count=0 < 1 应显示 FAIL
-        assert "active_clients_30d" in body
-
-    def test_active_clients_zero_fails(self, client):
-        """active_clients_30d=0 不允许 N/A, 必须 FAIL (count 没有 samples 概念)."""
-        resp = client.get("/api/v1/observability/dashboard")
-        body = resp.text
-        # active_clients_30d 行附近应有 FAIL badge
-        # 简单验证 FAIL 存在 (active_clients 是唯一保证有判定的 cold start 指标)
-        assert "FAIL" in body
+        assert "FAIL" in body  # active_clients_30d=0 → FAIL
 
     def test_metric_label_rendered(self, client):
         """中文 label 渲染."""
         resp = client.get("/api/v1/observability/dashboard")
         body = resp.text
-        assert "W12 完成率" in body
-        assert "议会发言质量" in body
         assert "API 错误率" in body
+        assert "Auth 失败率" in body
+        assert "30 日活跃客户数" in body
 
     def test_auto_refresh_meta(self, client):
         resp = client.get("/api/v1/observability/dashboard")
@@ -162,23 +176,23 @@ class TestObsHealth:
 
 
 class TestThresholdRendering:
-    def test_session_failure_renders_fail(self, client):
-        """插桩: 启动 10 议会, 0 完成 → success_rate=0 < 0.95 → FAIL."""
+    def test_auth_failure_renders_fail(self, client):
+        """插桩: 10 次 auth.attempt 全 401 → auth_failure_rate=100% > 2% → FAIL."""
         from xingtu_api.deps import get_service
         service = get_service()
         for i in range(10):
             service.events.emit(
-                event_type="fyd.session_started",
+                event_type="auth.attempt",
                 target_type="metric_event",
-                target_id=f"sess_{i}",
-                actor_type="user",
-                actor_id="u1",
-                after_snapshot=json.dumps({"user_id": "u1"}),
+                target_id=f"req_{i}",
+                after_snapshot=json.dumps({
+                    "status": 401,
+                    "area_key_prefix": "bad_key",
+                    "route": "/api/v1/x",
+                }),
             )
 
         resp = client.get("/api/v1/observability/dashboard")
         body = resp.text
-        # session_success_rate 那一行应是 FAIL (0% < 95%)
-        # 简单验证: 0.0% 出现 + FAIL 出现
-        assert "0.0%" in body
+        assert "100.00%" in body
         assert "FAIL" in body

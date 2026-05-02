@@ -1,4 +1,12 @@
-"""Observability routes — 17 项指标 JSON + HTML dashboard.
+"""Observability routes — Astrolabe 基建指标 dashboard.
+
+边界: 此 dashboard 只展示 **Astrolabe 自身基建** 的 9 项指标 (8 L1 + api_error_rate).
+**FYD 8 项产品指标** (W12/W4/采纳/付费/议会质量/成功率/报告生成/搜索命中)
+不在此处暴露 — 它们由 FYD 自己起 dashboard, 走 lib 调 `xingtu.observability`
+计算函数.
+
+`/metrics` JSON 仍返回 17 项原始数据 (lib `all_metrics()` 不变), 给 FYD 后端
+或外部聚合用; `/dashboard` HTML 与 `/health` 阈值汇总只判 9 项基建.
 
 Single source of truth for thresholds: `_SPECS` below.
 spec: docs/metrics/EVENT_SCHEMA.md
@@ -40,63 +48,14 @@ def _min_provider_rate(m: dict) -> float:
 
 
 _SPECS: list[dict] = [
-    # L3 价值
-    {
-        "name": "w12_completion_rate", "section": "L3_value", "label": "W12 完成率",
-        "extract": lambda m: m.get("rate", 0.0),
-        "op": ">=", "threshold": 0.30,
-        "format": lambda v: f"{v * 100:.1f}%", "threshold_str": "≥30%",
-    },
-    {
-        "name": "w4_retention_rate", "section": "L3_value", "label": "W4 留存率",
-        "extract": lambda m: m.get("rate", 0.0),
-        "op": ">=", "threshold": 0.50,
-        "format": lambda v: f"{v * 100:.1f}%", "threshold_str": "≥50%",
-    },
-    {
-        "name": "resolution_adoption_rate", "section": "L3_value", "label": "决议采纳率",
-        "extract": lambda m: m.get("rate", 0.0),
-        "op": ">=", "threshold": 0.40,
-        "format": lambda v: f"{v * 100:.1f}%", "threshold_str": "≥40%",
-    },
-    {
-        "name": "paid_conversion_rate", "section": "L3_value", "label": "付费转化率",
-        "extract": lambda m: m.get("rate", 0.0),
-        "op": ">=", "threshold": 0.15,
-        "format": lambda v: f"{v * 100:.1f}%", "threshold_str": "≥15%",
-    },
-    # L2 体验
-    {
-        "name": "session_quality_rate", "section": "L2_experience", "label": "议会发言质量",
-        "extract": lambda m: m.get("rate", 0.0),
-        "op": ">=", "threshold": 0.80,
-        "format": lambda v: f"{v * 100:.1f}%", "threshold_str": "≥80%",
-    },
-    {
-        "name": "session_success_rate", "section": "L2_experience", "label": "议会成功率",
-        "extract": lambda m: m.get("rate", 0.0),
-        "op": ">=", "threshold": 0.95,
-        "format": lambda v: f"{v * 100:.1f}%", "threshold_str": "≥95%",
-    },
-    {
-        "name": "report_generation_p95", "section": "L2_experience", "label": "报告生成 p95",
-        "extract": lambda m: m.get("p95_seconds", 0.0),
-        "op": "<=", "threshold": 90.0,
-        "format": lambda v: f"{v:.1f}s", "threshold_str": "≤90s",
-    },
+    # 基建 — API 健康
     {
         "name": "api_error_rate", "section": "L2_experience", "label": "API 错误率",
         "extract": lambda m: m.get("rate", 0.0),
         "op": "<", "threshold": 0.01,
         "format": lambda v: f"{v * 100:.2f}%", "threshold_str": "<1%",
     },
-    {
-        "name": "search_hit_rate", "section": "L2_experience", "label": "搜索命中率",
-        "extract": lambda m: m.get("rate", 0.0),
-        "op": ">=", "threshold": 0.70,
-        "format": lambda v: f"{v * 100:.1f}%", "threshold_str": "≥70%",
-    },
-    # L1 容量
+    # 基建 — L1 容量
     {
         "name": "api_read_p95", "section": "L1_capacity", "label": "API read p95",
         "extract": lambda m: m.get("p95_ms", 0.0),
@@ -149,9 +108,8 @@ _SPECS: list[dict] = [
 
 
 _SECTION_LABELS = {
-    "L3_value": "L3 价值层",
-    "L2_experience": "L2 体验层",
-    "L1_capacity": "L1 容量层",
+    "L2_experience": "API 健康",
+    "L1_capacity": "L1 基建容量",
 }
 
 
@@ -268,7 +226,7 @@ _HTML_BASE = """<!DOCTYPE html>
 </head>
 <body>
 <h1>Astrolabe Observability</h1>
-<div class="meta">17 项指标 · 60 秒自动刷新 · spec: <code>docs/metrics/EVENT_SCHEMA.md</code></div>
+<div class="meta">9 项基建指标 · 60 秒自动刷新 · FYD 业务指标走 FYD 自己 dashboard · spec: <code>docs/metrics/EVENT_SCHEMA.md</code></div>
 {sections}
 </body>
 </html>
