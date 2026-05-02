@@ -39,6 +39,19 @@ LanceDB 本身就是 embedded 数据库 (跟 SQLite 同模型), Astrolabe 沿用
 
 未来如果有真实付费第三方客户, 才考虑把这台升级成"通用基建服务"。当前不是。
 
+## 指标边界 (谁度量谁)
+
+[PR #9](https://github.com/trine777/astrolabe/pull/9) 引入的指标体系遵循同一边界:
+
+| 谁的指标 | 项数 | 暴露在哪 |
+|---------|-----|---------|
+| **Astrolabe (基建)** | 9: 8 L1 容量 + api_error_rate | `astrolabe.fly.dev/api/v1/observability/dashboard` |
+| **FYD (产品)** | 8: W12/W4/采纳/付费/议会质量/成功率/报告/搜索 | FYD 自己 dashboard (W2+ 起 FastAPI), 走 lib 调 `xingtu.observability` |
+
+`xingtu.observability` 模块是 **lib 工具**, 17 项计算函数全保留, FYD 直接 import 用. Astrolabe 自己的 REST dashboard 只展示基建那 9 项 — 不混"FYD 用户付费率"这种业务指标进去。
+
+`/api/v1/observability/metrics` JSON 端点仍返回 17 项原始数据 (lib `all_metrics()` 不变), 给 FYD 后端聚合或外部脚本读取。只是 HTML dashboard 与 health 阈值汇总判 9 项。
+
 ## 与 FYD 的关系
 
 FYD (12周 AI 议会陪跑产品) 是 Astrolabe 的首位真实使用者. 默认走路径 1:
