@@ -44,6 +44,19 @@ Data Infrastructure (lakes, warehouses, pipelines)
    AI Agents / Decision Systems
 ```
 
+## Use it in 4 ways
+
+Astrolabe **首选作为 Python 库直接 import** (LanceDB embedded, 零网络). REST 是给跨语言客户端的 adapter, 不是必经之路:
+
+| 路径 | 谁用 | 怎么调 |
+|------|------|--------|
+| **1. Python lib** (默认) | FYD / 任何同进程 Python 项目 | `from xingtu import XingTuService` |
+| **2. Matrix REST Adapter** | Matrix (Go) / 跨语言客户端 | `xingtu_api`, area_key Bearer, fly.io 部署 |
+| **3. Claude Desktop MCP** | Claude Desktop / Claude Code | `python -m xingtu_mcp.server` (stdio) |
+| **4. CLI** | 本地 dev / 数据导入脚本 | `xingtu` 命令 |
+
+详见 [`docs/POSITIONING.md`](docs/POSITIONING.md). **不要为了"好看"把同进程 Python 调用绕成 REST**。
+
 ## Key Features
 
 | Feature | Description |
@@ -55,7 +68,7 @@ Data Infrastructure (lakes, warehouses, pipelines)
 | **Dual interface** | macOS native GUI for humans, MCP for AI &mdash; shared metadata store |
 | **Multi-modal search** | Vector, full-text, and hybrid search over documents and metadata |
 | **Event-driven** | File drop triggers auto-import, inference, relation discovery |
-| **Docker-ready** | Single `docker compose up` for the Python stack |
+| **Optional REST adapter** | `xingtu_api` (FastAPI) for cross-language clients (Go/TS); `docker compose up` if you need it |
 
 ## Quick Start
 

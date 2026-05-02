@@ -1,7 +1,8 @@
 # `POST /api/v1/collections/{id}/reembed` — 异步全量重嵌
 
 > **状态**: spec v0.1 (2026-04-28), 实现 ETA 2026-05-04
-> **触发方**: stoa α / 后续任意 client
+> **维护态**: Stoa α 退役 (R2 BGE-M3 cutover 2026-05-05 后), 此 REST 端点进入维护态。新接入者首选 lib 路径: `XingTuService.reembed_collection()` (W2 暴露). REST 仅给 Matrix (Go) 等跨语言客户端。
+> **触发方**: Matrix / 跨语言客户端
 > **关联**: R2 BGE-M3 cutover (5/5 上线广播 7 天前)
 > **协议**: 提交即返 task_id, 轮询拿状态, 失败可重试, 同 idempotency_key 幂等
 

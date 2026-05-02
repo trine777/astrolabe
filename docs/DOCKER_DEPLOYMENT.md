@@ -1,6 +1,11 @@
 # 星图 Docker 部署指南
 
-> 将星图部署为 Docker 容器，提供稳定的 MCP 服务
+> **本文档面向 REST Adapter 部署** (即给 Matrix Go 等跨语言客户端用的形态)。
+>
+> 单进程内嵌 Astrolabe 请直接 lib import：`from xingtu import XingTuService`。
+> 详见 [`POSITIONING.md`](POSITIONING.md) 的 4 路径决策树。
+
+> 将星图部署为 Docker 容器，提供稳定的 REST + MCP 服务 (Adapter 形态)
 
 ## 快速开始
 
